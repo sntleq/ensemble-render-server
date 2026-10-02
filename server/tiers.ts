@@ -20,7 +20,7 @@ export interface TierLimits {
 
 export const TIER_LIMITS: Record<Tier, TierLimits> = {
   free: {
-    maxResolution: 540,
+    maxResolution: 720,
     maxFps: 30,
     maxDurationMs: 20 * 60 * 1000,
     videoRenderTarget: "server",

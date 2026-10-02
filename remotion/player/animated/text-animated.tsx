@@ -40,6 +40,7 @@ import FontChange from "./text-animated-types/animations-loop/font-change";
 import ShakeText from "./text-animated-types/animations-loop/shake-text";
 import Vintage from "./text-animated-types/animations-loop/vintage";
 import Glitch from "./text-animated-types/animations-loop/glitch";
+import {getKerningAdjustment} from "./text-animated-types/kerning";
 
 const animationsIn: { [key: string]: React.FC<any> } = {
   animatedTextIn: AnimatedTextIn,
@@ -126,10 +127,21 @@ export const TextAnimated: React.FC<{
   const frame = useCurrentFrame();
   const animInFrom = animationTextInFrames;
   const animOut = durationInFrames - animationTextOutFrames;
-  const validAnimIn = textAnimationNameIn ? animInFrom >= frame : false;
-  const validAnimOut = textAnimationNameOut ? animOut < frame : false;
 
-  if (!validAnimOut && !validAnimIn && !textAnimationNameLoop) {
+  const hasTextAnimIn =
+    !!textAnimationNameIn &&
+    !!(animationsIn[textAnimationNameIn] || animationsFullIn[textAnimationNameIn]);
+  const hasTextAnimOut =
+    !!textAnimationNameOut &&
+    !!(animationsOut[textAnimationNameOut] || animationsFullOut[textAnimationNameOut]);
+  const hasTextAnimLoop =
+    !!textAnimationNameLoop &&
+    !!(animationsLoop[textAnimationNameLoop] || animationsFullLoop[textAnimationNameLoop]);
+
+  const validAnimIn = hasTextAnimIn ? animInFrom >= frame : false;
+  const validAnimOut = hasTextAnimOut ? animOut < frame : false;
+
+  if (!validAnimOut && !validAnimIn && !hasTextAnimLoop) {
     const isGradient = /^(linear|radial)-gradient\(/i.test((details.color || "").trim());
     if (isGradient) {
       return (
@@ -146,7 +158,7 @@ export const TextAnimated: React.FC<{
         >
           <div
             style={{
-              whiteSpace: "pre-line",
+              whiteSpace: "pre-wrap",
               width: "100%",
               height: "100%",
               position: "absolute",
@@ -164,7 +176,7 @@ export const TextAnimated: React.FC<{
           <div
             style={{
               ...textColorStyle,
-              whiteSpace: "pre-line",
+              whiteSpace: "pre-wrap",
               width: "100%",
               height: "100%",
               position: "absolute",
@@ -188,7 +200,7 @@ export const TextAnimated: React.FC<{
       <div
         style={{
           ...textColorStyle,
-          whiteSpace: "pre-line",
+          whiteSpace: "pre-wrap",
           width: details.width,
           height: details.height ?? ((Number(details.lineHeight) ?? 1) * details.fontSize),
           display: "flex",
@@ -235,7 +247,7 @@ export const TextAnimated: React.FC<{
   if (validAnimOut && textAnimationNameOut) {
     AnimationComponentFullOut = animationsFullOut[textAnimationNameOut];
   }
-  if (!validAnimIn && !validAnimOut && textAnimationNameLoop) {
+  if (!validAnimIn && !validAnimOut && hasTextAnimLoop) {
     AnimationComponentFullLoop = animationsFullLoop[textAnimationNameLoop];
   }
 
@@ -244,23 +256,23 @@ export const TextAnimated: React.FC<{
   if (ActiveFullBlockComponent) {
     const getColorStyle = (left: number, top: number) =>
       getCharLayerStyles(
-          details.color,
-          { left, top },
-          { width: details.width, height: details.height },
-          details.textDecoration,
-          details.fontSize
-        );
+        details.color,
+        { left, top },
+        { width: details.width, height: details.height },
+        details.textDecoration,
+        details.fontSize
+      );
 
     return (
       <div
         style={{
           width: details.width,
-            height: details.height,
-            display: "flex",
-            flexDirection: "column",
-            alignItems:
-            details.textAlign === "left" ? "flex-start" : details.textAlign === "right" ? "flex-end" : "center",
-            justifyContent: "center"
+          height: details.height,
+          display: "flex",
+          flexDirection: "column",
+          alignItems:
+          details.textAlign === "left" ? "flex-start" : details.textAlign === "right" ? "flex-end" : "center",
+          justifyContent: "center"
         }}
       >
         <ActiveFullBlockComponent
@@ -282,6 +294,8 @@ export const TextAnimated: React.FC<{
       </div>
     );
   }
+
+  const font = `${details.fontWeight ?? 400} ${details.fontSize}px "${details.fontFamily}"`;
 
   return (
     <div
@@ -334,7 +348,7 @@ export const TextAnimated: React.FC<{
                   colorStyle={colorStyle}
                 />
               );
-            } else if (textAnimationNameLoop && !validAnimIn && !validAnimOut) {
+            } else if (hasTextAnimLoop && !validAnimIn && !validAnimOut) {
               charEl = (
                 <AnimationComponentLoop
                   char={char}
@@ -366,7 +380,7 @@ export const TextAnimated: React.FC<{
                 key={index}
                 style={{
                   display: "inline-block",
-                  marginRight: "-0.05ch"
+                  marginLeft: getKerningAdjustment(line[index - 1], char, font)
                 }}
               >
                 {charEl}
