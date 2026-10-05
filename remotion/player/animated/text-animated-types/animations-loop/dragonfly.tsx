@@ -1,13 +1,13 @@
 import { AnimatedChar } from "../animated-char";
 
 const DragonflyText = ({
-                         char,
-                         frame,
-                         durationInFrames,
-                         animationTextInFrames,
-                         animationTextOutFrames,
-                         colorStyle
-                       }: {
+  char,
+  frame,
+  durationInFrames,
+  animationTextInFrames,
+  animationTextOutFrames,
+  colorStyle
+}: {
   char: string;
   frame: number;
   durationInFrames: number;

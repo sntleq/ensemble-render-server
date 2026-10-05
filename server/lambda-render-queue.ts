@@ -14,10 +14,41 @@ type LambdaRegion = Parameters<typeof renderMediaOnLambda>[0]["region"];
 type LambdaCodec = Parameters<typeof renderMediaOnLambda>[0]["codec"];
 
 type JobState =
-  | { status: "queued"; data: JobData; userId: string; createdAt: number; tier: Tier; cancel: () => void }
-  | { status: "in-progress"; progress: number; data: JobData; userId: string; createdAt: number; tier: Tier; cancel: () => void }
-  | { status: "completed"; videoUrl: string; data: JobData; userId: string; createdAt: number; tier: Tier; key: string; completedAt: number }
-  | { status: "failed"; error: Error; data: JobData; userId: string; createdAt: number; tier: Tier };
+  | {
+      status: "queued";
+      data: JobData;
+      userId: string;
+      createdAt: number;
+      tier: Tier;
+      cancel: () => void;
+    }
+  | {
+      status: "in-progress";
+      progress: number;
+      data: JobData;
+      userId: string;
+      createdAt: number;
+      tier: Tier;
+      cancel: () => void;
+    }
+  | {
+      status: "completed";
+      videoUrl: string;
+      data: JobData;
+      userId: string;
+      createdAt: number;
+      tier: Tier;
+      key: string;
+      completedAt: number;
+    }
+  | {
+      status: "failed";
+      error: Error;
+      data: JobData;
+      userId: string;
+      createdAt: number;
+      tier: Tier;
+    };
 
 const {
   REMOTION_AWS_REGION,
@@ -36,7 +67,10 @@ const MEDIA_CODEC_MAP: Record<string, LambdaCodec> = {
   wav: "wav",
   aac: "aac",
 };
-const STILL_FORMAT_MAP: Record<string, "png" | "jpeg"> = { png: "png", jpeg: "jpeg" };
+const STILL_FORMAT_MAP: Record<string, "png" | "jpeg"> = {
+  png: "png",
+  jpeg: "jpeg",
+};
 
 const sanitizeFilename = (name: string): string => {
   const trimmed = name.trim();
@@ -47,7 +81,9 @@ const sanitizeFilename = (name: string): string => {
 type Lane = "stillsAudio" | "proBusiness";
 
 const getLane = (data: JobData): Lane =>
-  data.type === "image" || data.type === "audio" ? "stillsAudio" : "proBusiness";
+  data.type === "image" || data.type === "audio"
+    ? "stillsAudio"
+    : "proBusiness";
 
 // Worker concurrency per video tier (+1 orchestrator invocation each, added
 // automatically by renderMediaOnLambda - not part of the concurrency count)
@@ -63,7 +99,9 @@ const VIDEO_WORKER_CONCURRENCY: Record<"pro" | "business", number> = {
 const invocationCost = (data: JobData, tier: Tier): number => {
   if (data.type === "audio") return 2;
   if (data.type === "image") return 1;
-  const workers = VIDEO_WORKER_CONCURRENCY[tier as "pro" | "business"] ?? VIDEO_WORKER_CONCURRENCY.pro;
+  const workers =
+    VIDEO_WORKER_CONCURRENCY[tier as "pro" | "business"] ??
+    VIDEO_WORKER_CONCURRENCY.pro;
   return workers + 1;
 };
 
@@ -86,7 +124,9 @@ export const makeLambdaRenderQueue = () => {
     ["CLOUDFRONT_DOMAIN", CLOUDFRONT_DOMAIN],
   ].filter(([, v]) => !v);
   if (missing.length > 0) {
-    throw new Error(`Missing lambda env vars: ${missing.map(([n]) => n).join(", ")}`);
+    throw new Error(
+      `Missing lambda env vars: ${missing.map(([n]) => n).join(", ")}`,
+    );
   }
 
   const region = REMOTION_AWS_REGION as LambdaRegion;
@@ -100,13 +140,19 @@ export const makeLambdaRenderQueue = () => {
   // this just stops the app from tracking/reporting on a job after cancel.
   const cancelledJobIds = new Set<string>();
 
-  const activeInvocations: Record<Lane, number> = { stillsAudio: 0, proBusiness: 0 };
+  const activeInvocations: Record<Lane, number> = {
+    stillsAudio: 0,
+    proBusiness: 0,
+  };
 
   const pendingJobIds: string[] = [];
 
   const canAdmit = (data: JobData, tier: Tier): boolean => {
     const lane = getLane(data);
-    return activeInvocations[lane] + invocationCost(data, tier) <= LANE_INVOCATION_BUDGET[lane];
+    return (
+      activeInvocations[lane] + invocationCost(data, tier) <=
+      LANE_INVOCATION_BUDGET[lane]
+    );
   };
 
   const runNext = () => {
@@ -128,18 +174,33 @@ export const makeLambdaRenderQueue = () => {
       const cost = invocationCost(job.data, job.tier);
       activeInvocations[lane] += cost;
 
-      const start = job.data.type === "image"
-        ? startStillRender(jobId, job.data, job.userId, job.createdAt, job.tier)
-        : startMediaRender(jobId, job.data, job.userId, job.createdAt, job.tier);
+      const start =
+        job.data.type === "image"
+          ? startStillRender(
+              jobId,
+              job.data,
+              job.userId,
+              job.createdAt,
+              job.tier,
+            )
+          : startMediaRender(
+              jobId,
+              job.data,
+              job.userId,
+              job.createdAt,
+              job.tier,
+            );
       start
-        .catch((error) => jobs.set(jobId, {
-          status: "failed",
-          error,
-          data: job.data,
-          tier: job.tier,
-          userId: job.userId,
-          createdAt: job.createdAt,
-        }))
+        .catch((error) =>
+          jobs.set(jobId, {
+            status: "failed",
+            error,
+            data: job.data,
+            tier: job.tier,
+            userId: job.userId,
+            createdAt: job.createdAt,
+          }),
+        )
         .finally(() => {
           activeInvocations[lane] -= cost;
           runNext();
@@ -169,7 +230,9 @@ export const makeLambdaRenderQueue = () => {
 
   // scoped to the job's own lane so position/total don't mix stillsAudio
   // and proBusiness counts when both have queued jobs
-  const getQueuePosition = (jobId: string): { position: number; total: number } | null => {
+  const getQueuePosition = (
+    jobId: string,
+  ): { position: number; total: number } | null => {
     const job = jobs.get(jobId);
     if (!job) return null;
 
@@ -187,25 +250,45 @@ export const makeLambdaRenderQueue = () => {
   // "Active" = still holds the user's one-export-at-a-time slot: queued,
   // rendering, or completed but not yet downloaded (download deletes the
   // job). Failed jobs don't block - the user needs to be able to retry.
-  const getActiveJobForUser = (userId: string): { jobId: string; job: JobState } | null => {
+  const getActiveJobForUser = (
+    userId: string,
+  ): { jobId: string; job: JobState } | null => {
     for (const [jobId, job] of jobs.entries()) {
       if (job.userId !== userId) continue;
-      if (job.status === "queued" || job.status === "in-progress" || job.status === "completed") {
+      if (
+        job.status === "queued" ||
+        job.status === "in-progress" ||
+        job.status === "completed"
+      ) {
         return { jobId, job };
       }
     }
     return null;
   };
 
-  const startMediaRender = async (jobId: string, data: JobData, userId: string, createdAt: number, tier: Tier) => {
+  const startMediaRender = async (
+    jobId: string,
+    data: JobData,
+    userId: string,
+    createdAt: number,
+    tier: Tier,
+  ) => {
     const codec = MEDIA_CODEC_MAP[data.format];
-    if (!codec) throw new Error(`Unsupported format for lambda media render: ${data.format}`);
+    if (!codec)
+      throw new Error(
+        `Unsupported format for lambda media render: ${data.format}`,
+      );
 
     const outKey = `renders/${jobId}.${data.format}`;
     const shorterDimension = Math.min(data.size.width, data.size.height);
     const scale = data.resolution / shorterDimension;
-    const bitrateArg = data.bitrate != null ? (`${data.bitrate}k` as const) : undefined;
-    const concurrency = data.type === "audio" ? 1 : VIDEO_WORKER_CONCURRENCY[tier as "pro" | "business"] ?? VIDEO_WORKER_CONCURRENCY.pro;
+    const bitrateArg =
+      data.bitrate != null ? (`${data.bitrate}k` as const) : undefined;
+    const concurrency =
+      data.type === "audio"
+        ? 1
+        : (VIDEO_WORKER_CONCURRENCY[tier as "pro" | "business"] ??
+          VIDEO_WORKER_CONCURRENCY.pro);
 
     const { renderId, bucketName: siteBucketName } = await renderMediaOnLambda({
       region,
@@ -215,7 +298,8 @@ export const makeLambdaRenderQueue = () => {
       inputProps: data,
       codec,
       scale: data.type === "video" ? scale : undefined,
-      videoBitrate: data.type === "video" && codec !== "gif" ? bitrateArg : undefined,
+      videoBitrate:
+        data.type === "video" && codec !== "gif" ? bitrateArg : undefined,
       audioBitrate: data.type === "audio" ? bitrateArg : undefined,
       concurrency,
       privacy: "no-acl",
@@ -256,9 +340,18 @@ export const makeLambdaRenderQueue = () => {
     });
   };
 
-  const startStillRender = async (jobId: string, data: JobData, userId: string, createdAt: number, tier: Tier) => {
+  const startStillRender = async (
+    jobId: string,
+    data: JobData,
+    userId: string,
+    createdAt: number,
+    tier: Tier,
+  ) => {
     const imageFormat = STILL_FORMAT_MAP[data.format];
-    if (!imageFormat) throw new Error(`Unsupported image format for lambda still: ${data.format}`);
+    if (!imageFormat)
+      throw new Error(
+        `Unsupported image format for lambda still: ${data.format}`,
+      );
 
     const outKey = `renders/${jobId}.${data.format}`;
     const frame = Math.round(((data.currentTime ?? 0) / 1000) * data.fps);
@@ -307,7 +400,16 @@ export const makeLambdaRenderQueue = () => {
     });
   };
 
-  const pollUntilDone = async (jobId: string, renderId: string, siteBucketName: string, outKey: string, data: JobData, userId: string, createdAt: number, tier: Tier) => {
+  const pollUntilDone = async (
+    jobId: string,
+    renderId: string,
+    siteBucketName: string,
+    outKey: string,
+    data: JobData,
+    userId: string,
+    createdAt: number,
+    tier: Tier,
+  ) => {
     while (true) {
       if (cancelledJobIds.has(jobId)) {
         cancelledJobIds.delete(jobId);
@@ -315,16 +417,23 @@ export const makeLambdaRenderQueue = () => {
         return;
       }
 
-      const progress = await getRenderProgress({ renderId, bucketName: siteBucketName, functionName, region });
+      const progress = await getRenderProgress({
+        renderId,
+        bucketName: siteBucketName,
+        functionName,
+        region,
+      });
 
       if (progress.fatalErrorEncountered) {
         console.error(
           `Lambda render ${renderId} failed:`,
-          JSON.stringify(progress.errors, null, 2)
+          JSON.stringify(progress.errors, null, 2),
         );
         jobs.set(jobId, {
           status: "failed",
-          error: new Error(progress.errors[0]?.message ?? "Lambda render failed"),
+          error: new Error(
+            progress.errors[0]?.message ?? "Lambda render failed",
+          ),
           data,
           tier,
           userId: userId,
@@ -383,9 +492,11 @@ export const makeLambdaRenderQueue = () => {
       const key = job.key;
       // slot is freed right away, but the file stays long enough for the browser's GET to finish
       setTimeout(() => {
-        s3
-          .send(new DeleteObjectCommand({ Bucket: bucketName, Key: key }))
-          .catch((error) => console.error(`Failed to delete S3 object for job ${jobId}:`, error));
+        s3.send(
+          new DeleteObjectCommand({ Bucket: bucketName, Key: key }),
+        ).catch((error) =>
+          console.error(`Failed to delete S3 object for job ${jobId}:`, error),
+        );
       }, DOWNLOAD_GRACE_MS);
     }
 

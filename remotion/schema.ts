@@ -12,7 +12,7 @@ export const backgroundSchema = z.object({
 
 export const exportTypeSchema =
   z.enum(["video", "audio", "image", "image-sequence"]);
-export const exportFormatSchema = 
+export const exportFormatSchema =
   z.enum(["mp4", "mov", "mkv", "gif", "png", "jpeg", "mp3", "wav", "aac"]);
 
 export const videoEditorSchema = z.object({

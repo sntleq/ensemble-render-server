@@ -57,7 +57,7 @@ export function getTierForUser(userId: string | undefined): Tier {
   if (debugTier) {
     if (!isTier(debugTier)) {
       throw new Error(
-        `DEBUG_TIER="${debugTier}" is invalid - must be one of: ${TIERS.join(", ")}`
+        `DEBUG_TIER="${debugTier}" is invalid - must be one of: ${TIERS.join(", ")}`,
       );
     }
     return debugTier;
@@ -68,7 +68,7 @@ export function getTierForUser(userId: string | undefined): Tier {
 
 export function getRenderTarget(
   type: VideoEditorSchemaProps["type"],
-  tier: Tier
+  tier: Tier,
 ): RenderTarget {
   if (type === "image-sequence") return "server";
   if (type !== "video") return "lambda";
@@ -77,24 +77,24 @@ export function getRenderTarget(
 
 export function checkTierLimits(
   data: VideoEditorSchemaProps,
-  tier: Tier
+  tier: Tier,
 ): string[] {
   const limits = TIER_LIMITS[tier];
   const violations: string[] = [];
 
   if (data.resolution && data.resolution > limits.maxResolution) {
     violations.push(
-      `resolution ${data.resolution}p exceeds the ${tier} plan's limit of ${limits.maxResolution}p`
+      `resolution ${data.resolution}p exceeds the ${tier} plan's limit of ${limits.maxResolution}p`,
     );
   }
   if (data.fps && data.fps > limits.maxFps) {
     violations.push(
-      `frame rate ${data.fps}fps exceeds the ${tier} plan's limit of ${limits.maxFps}fps`
+      `frame rate ${data.fps}fps exceeds the ${tier} plan's limit of ${limits.maxFps}fps`,
     );
   }
   if (data.duration && data.duration > limits.maxDurationMs) {
     violations.push(
-      `duration exceeds the ${tier} plan's limit of ${Math.round(limits.maxDurationMs / 60_000)} minutes`
+      `duration exceeds the ${tier} plan's limit of ${Math.round(limits.maxDurationMs / 60_000)} minutes`,
     );
   }
 

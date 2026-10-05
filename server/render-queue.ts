@@ -6,7 +6,10 @@ import {
   selectComposition,
 } from "@remotion/renderer";
 import type { Codec } from "@remotion/renderer";
-import { renderMediaOnLambda, getRenderProgress } from "@remotion/lambda/client";
+import {
+  renderMediaOnLambda,
+  getRenderProgress,
+} from "@remotion/lambda/client";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import fs from "node:fs/promises";
@@ -18,11 +21,48 @@ import type { VideoEditorSchemaProps } from "../remotion/schema";
 type JobData = VideoEditorSchemaProps;
 
 type JobState =
-  | { status: "queued"; data: JobData; userId: string; createdAt: number; cancel: () => void }
-  | { status: "in-progress"; progress: number; data: JobData; userId: string; createdAt: number; cancel: () => void }
-  | { status: "completed"; videoUrl: string; data: JobData; userId: string; createdAt: number; completedAt: number; renderedVia: "local"; outputPath: string }
-  | { status: "completed"; videoUrl: string; data: JobData; userId: string; createdAt: number; completedAt: number; renderedVia: "lambda-overflow"; s3Key: string }
-  | { status: "failed"; error: Error; data: JobData; userId: string; createdAt: number };
+  | {
+      status: "queued";
+      data: JobData;
+      userId: string;
+      createdAt: number;
+      cancel: () => void;
+    }
+  | {
+      status: "in-progress";
+      progress: number;
+      data: JobData;
+      userId: string;
+      createdAt: number;
+      cancel: () => void;
+    }
+  | {
+      status: "completed";
+      videoUrl: string;
+      data: JobData;
+      userId: string;
+      createdAt: number;
+      completedAt: number;
+      renderedVia: "local";
+      outputPath: string;
+    }
+  | {
+      status: "completed";
+      videoUrl: string;
+      data: JobData;
+      userId: string;
+      createdAt: number;
+      completedAt: number;
+      renderedVia: "lambda-overflow";
+      s3Key: string;
+    }
+  | {
+      status: "failed";
+      error: Error;
+      data: JobData;
+      userId: string;
+      createdAt: number;
+    };
 
 const compositionId = "VideoEditor";
 
@@ -45,7 +85,10 @@ const STILL_FORMAT_MAP: Record<string, "png" | "jpeg"> = {
 
 // video-only codec map for the lambda overflow path - overflow never handles
 // audio/stills, those always go to the stillsAudio lane in lambda-render-queue.ts
-const LAMBDA_MEDIA_CODEC_MAP: Record<string, Parameters<typeof renderMediaOnLambda>[0]["codec"]> = {
+const LAMBDA_MEDIA_CODEC_MAP: Record<
+  string,
+  Parameters<typeof renderMediaOnLambda>[0]["codec"]
+> = {
   mp4: "h264",
   mov: "prores",
   mkv: "h264",
@@ -58,7 +101,10 @@ const sanitizeFilename = (name: string): string => {
   return trimmed.replace(/[/\\?%*:|"<>]/g, "-");
 };
 
-const zipDirectory = (sourceDir: string, outputZipPath: string): Promise<void> => {
+const zipDirectory = (
+  sourceDir: string,
+  outputZipPath: string,
+): Promise<void> => {
   return new Promise((resolve, reject) => {
     const output = createWriteStream(outputZipPath);
     const archive = new ZipArchive({ zlib: { level: 9 } });
@@ -103,7 +149,8 @@ export const makeRenderQueue = ({
     CLOUDFRONT_DOMAIN,
   } = process.env;
 
-  const publicBaseUrl = process.env.RENDER_SERVER_URL ?? `http://localhost:${port}`;
+  const publicBaseUrl =
+    process.env.RENDER_SERVER_URL ?? `http://localhost:${port}`;
 
   const missingOverflowEnv = [
     ["REMOTION_AWS_REGION", REMOTION_AWS_REGION],
@@ -113,10 +160,14 @@ export const makeRenderQueue = ({
     ["CLOUDFRONT_DOMAIN", CLOUDFRONT_DOMAIN],
   ].filter(([, v]) => !v);
   if (missingOverflowEnv.length > 0) {
-    throw new Error(`Missing lambda overflow env vars: ${missingOverflowEnv.map(([n]) => n).join(", ")}`);
+    throw new Error(
+      `Missing lambda overflow env vars: ${missingOverflowEnv.map(([n]) => n).join(", ")}`,
+    );
   }
 
-  const overflowRegion = REMOTION_AWS_REGION as Parameters<typeof renderMediaOnLambda>[0]["region"];
+  const overflowRegion = REMOTION_AWS_REGION as Parameters<
+    typeof renderMediaOnLambda
+  >[0]["region"];
   const overflowFunctionName = REMOTION_LAMBDA_FUNCTION_NAME as string;
   const overflowServeUrl = REMOTION_LAMBDA_SERVE_URL as string;
   const overflowBucketName = OUTPUT_BUCKET_NAME as string;
@@ -152,7 +203,8 @@ export const makeRenderQueue = ({
       }
 
       const hasLocalSlot = activeLocalCount < MAX_LOCAL_JOBS;
-      const hasOverflowSlot = canOverflow(job.data) && activeOverflowCount < MAX_OVERFLOW_JOBS;
+      const hasOverflowSlot =
+        canOverflow(job.data) && activeOverflowCount < MAX_OVERFLOW_JOBS;
 
       if (!hasLocalSlot && !hasOverflowSlot) continue;
 
@@ -162,7 +214,9 @@ export const makeRenderQueue = ({
       if (hasLocalSlot) {
         activeLocalCount++;
         processLocalRender(jobId)
-          .catch((error) => console.error(`Unhandled error processing job ${jobId}:`, error))
+          .catch((error) =>
+            console.error(`Unhandled error processing job ${jobId}:`, error),
+          )
           .finally(() => {
             activeLocalCount--;
             runNext();
@@ -170,7 +224,12 @@ export const makeRenderQueue = ({
       } else {
         activeOverflowCount++;
         processOverflowRender(jobId)
-          .catch((error) => console.error(`Unhandled error processing overflow job ${jobId}:`, error))
+          .catch((error) =>
+            console.error(
+              `Unhandled error processing overflow job ${jobId}:`,
+              error,
+            ),
+          )
           .finally(() => {
             activeOverflowCount--;
             runNext();
@@ -202,7 +261,9 @@ export const makeRenderQueue = ({
     return jobId;
   }
 
-  const getQueuePosition = (jobId: string): { position: number; total: number } | null => {
+  const getQueuePosition = (
+    jobId: string,
+  ): { position: number; total: number } | null => {
     const index = pendingJobIds.indexOf(jobId);
     if (index === -1) return null;
     return { position: index + 1, total: pendingJobIds.length };
@@ -211,10 +272,16 @@ export const makeRenderQueue = ({
   // "Active" = still holds the user's one-export-at-a-time slot: queued,
   // rendering, or completed but not yet downloaded (download deletes the
   // job). Failed jobs don't block - the user needs to be able to retry.
-  const getActiveJobForUser = (userId: string): { jobId: string; job: JobState } | null => {
+  const getActiveJobForUser = (
+    userId: string,
+  ): { jobId: string; job: JobState } | null => {
     for (const [jobId, job] of jobs.entries()) {
       if (job.userId !== userId) continue;
-      if (job.status === "queued" || job.status === "in-progress" || job.status === "completed") {
+      if (
+        job.status === "queued" ||
+        job.status === "in-progress" ||
+        job.status === "completed"
+      ) {
         return { jobId, job };
       }
     }
@@ -256,11 +323,18 @@ export const makeRenderQueue = ({
       if (job.data.type === "image") {
         const imageFormat = STILL_FORMAT_MAP[job.data.format];
         if (!imageFormat) {
-          throw new Error(`Unsupported image format for stills: ${job.data.format}`);
+          throw new Error(
+            `Unsupported image format for stills: ${job.data.format}`,
+          );
         }
 
-        const frame = Math.round(((job.data.currentTime ?? 0) / 1000) * job.data.fps);
-        const outputPath = path.join(rendersDirPath, `${jobId}.${job.data.format}`);
+        const frame = Math.round(
+          ((job.data.currentTime ?? 0) / 1000) * job.data.fps,
+        );
+        const outputPath = path.join(
+          rendersDirPath,
+          `${jobId}.${job.data.format}`,
+        );
         expectedOutputPaths = [outputPath];
 
         await renderStill({
@@ -294,7 +368,9 @@ export const makeRenderQueue = ({
       if (job.data.type === "image-sequence") {
         const imageFormat = STILL_FORMAT_MAP[job.data.format];
         if (!imageFormat) {
-          throw new Error(`Unsupported image format for image sequences: ${job.data.format}`);
+          throw new Error(
+            `Unsupported image format for image sequences: ${job.data.format}`,
+          );
         }
 
         const framesDir = path.join(rendersDirPath, `${jobId}-frames`);
@@ -337,7 +413,9 @@ export const makeRenderQueue = ({
         if (await handleIfCancelled(jobId, expectedOutputPaths)) return;
 
         await zipDirectory(framesDir, zipPath);
-        await fs.rm(framesDir, { recursive: true, force: true }).catch(() => {});
+        await fs
+          .rm(framesDir, { recursive: true, force: true })
+          .catch(() => {});
 
         if (await handleIfCancelled(jobId, [zipPath])) return;
 
@@ -356,22 +434,32 @@ export const makeRenderQueue = ({
 
       const mediaFormat = MEDIA_FORMAT_MAP[job.data.format];
       if (!mediaFormat) {
-        throw new Error(`Unsupported format for media render: ${job.data.format}`);
+        throw new Error(
+          `Unsupported format for media render: ${job.data.format}`,
+        );
       }
 
-      const shorterDimension = Math.min(job.data.size.width, job.data.size.height);
+      const shorterDimension = Math.min(
+        job.data.size.width,
+        job.data.size.height,
+      );
       const scale = job.data.resolution / shorterDimension;
 
       type FfmpegBitrate = `${number}k` | `${number}K` | `${number}M`;
 
-      const toFfmpegBitrate = (kbps: number | null | undefined): FfmpegBitrate | undefined => {
+      const toFfmpegBitrate = (
+        kbps: number | null | undefined,
+      ): FfmpegBitrate | undefined => {
         if (kbps == null) return undefined;
         return `${kbps}k`;
       };
       const bitrateArg = toFfmpegBitrate(job.data.bitrate);
 
       const isGif = mediaFormat.codec === "gif";
-      const outputPath = path.join(rendersDirPath, `${jobId}.${mediaFormat.ext}`);
+      const outputPath = path.join(
+        rendersDirPath,
+        `${jobId}.${mediaFormat.ext}`,
+      );
       expectedOutputPaths = [outputPath];
 
       await renderMedia({
@@ -381,7 +469,8 @@ export const makeRenderQueue = ({
         inputProps,
         codec: mediaFormat.codec,
         scale: job.data.type === "video" ? scale : undefined,
-        videoBitrate: job.data.type === "video" && !isGif ? bitrateArg : undefined,
+        videoBitrate:
+          job.data.type === "video" && !isGif ? bitrateArg : undefined,
         audioBitrate: job.data.type === "audio" ? bitrateArg : undefined,
         audioCodec: mediaFormat.codec === "h264-mkv" ? "mp3" : undefined,
         onProgress: (progress) => {
@@ -439,7 +528,9 @@ export const makeRenderQueue = ({
     if (!codec) {
       jobs.set(jobId, {
         status: "failed",
-        error: new Error(`Unsupported format for overflow render: ${data.format}`),
+        error: new Error(
+          `Unsupported format for overflow render: ${data.format}`,
+        ),
         data,
         userId: job.userId,
         createdAt: job.createdAt,
@@ -459,26 +550,28 @@ export const makeRenderQueue = ({
     const outKey = `renders/${jobId}.${data.format}`;
     const shorterDimension = Math.min(data.size.width, data.size.height);
     const scale = data.resolution / shorterDimension;
-    const bitrateArg = data.bitrate != null ? (`${data.bitrate}k` as const) : undefined;
+    const bitrateArg =
+      data.bitrate != null ? (`${data.bitrate}k` as const) : undefined;
 
     try {
-      const { renderId, bucketName: siteBucketName } = await renderMediaOnLambda({
-        region: overflowRegion,
-        functionName: overflowFunctionName,
-        serveUrl: overflowServeUrl,
-        composition: "VideoEditor",
-        inputProps: data,
-        codec,
-        scale,
-        videoBitrate: codec !== "gif" ? bitrateArg : undefined,
-        concurrency: OVERFLOW_LAMBDA_COUNT,
-        privacy: "no-acl",
-        outName: { bucketName: overflowBucketName, key: outKey },
-        downloadBehavior: {
-          type: "download",
-          fileName: `${sanitizeFilename(data.projectName)}.${data.format}`,
-        },
-      });
+      const { renderId, bucketName: siteBucketName } =
+        await renderMediaOnLambda({
+          region: overflowRegion,
+          functionName: overflowFunctionName,
+          serveUrl: overflowServeUrl,
+          composition: "VideoEditor",
+          inputProps: data,
+          codec,
+          scale,
+          videoBitrate: codec !== "gif" ? bitrateArg : undefined,
+          concurrency: OVERFLOW_LAMBDA_COUNT,
+          privacy: "no-acl",
+          outName: { bucketName: overflowBucketName, key: outKey },
+          downloadBehavior: {
+            type: "download",
+            fileName: `${sanitizeFilename(data.projectName)}.${data.format}`,
+          },
+        });
 
       while (true) {
         if (cancelledOverflowJobIds.has(jobId)) {
@@ -497,7 +590,9 @@ export const makeRenderQueue = ({
         if (progress.fatalErrorEncountered) {
           jobs.set(jobId, {
             status: "failed",
-            error: new Error(progress.errors[0]?.message ?? "Lambda overflow render failed"),
+            error: new Error(
+              progress.errors[0]?.message ?? "Lambda overflow render failed",
+            ),
             data,
             userId: job.userId,
             createdAt: job.createdAt,
@@ -557,14 +652,21 @@ export const makeRenderQueue = ({
 
     if (job.status === "completed") {
       if (job.renderedVia === "local") {
-        await fs.rm(job.outputPath, { recursive: true, force: true }).catch(() => {});
+        await fs
+          .rm(job.outputPath, { recursive: true, force: true })
+          .catch(() => {});
       } else {
         const key = job.s3Key;
         // the browser downloads straight from CloudFront, so give its GET time to finish
         setTimeout(() => {
-          s3
-            .send(new DeleteObjectCommand({ Bucket: overflowBucketName, Key: key }))
-            .catch((error) => console.error(`Failed to delete S3 object for overflow job ${jobId}:`, error));
+          s3.send(
+            new DeleteObjectCommand({ Bucket: overflowBucketName, Key: key }),
+          ).catch((error) =>
+            console.error(
+              `Failed to delete S3 object for overflow job ${jobId}:`,
+              error,
+            ),
+          );
         }, DOWNLOAD_GRACE_MS);
       }
     }
@@ -581,7 +683,7 @@ export const makeRenderQueue = ({
   // way to "completed".
   const handleIfCancelled = async (
     jobId: string,
-    cleanupPaths: string[] = []
+    cleanupPaths: string[] = [],
   ): Promise<boolean> => {
     if (!cancelledJobIds.has(jobId)) return false;
 
@@ -603,12 +705,22 @@ export const makeRenderQueue = ({
       const now = Date.now();
 
       for (const [jobId, job] of jobs.entries()) {
-        if (job.status === "completed" && now - job.completedAt > RENDER_TTL_MS) {
+        if (
+          job.status === "completed" &&
+          now - job.completedAt > RENDER_TTL_MS
+        ) {
           if (job.renderedVia === "local") {
-            await fs.rm(job.outputPath, { recursive: true, force: true }).catch(() => {});
+            await fs
+              .rm(job.outputPath, { recursive: true, force: true })
+              .catch(() => {});
           } else {
             await s3
-              .send(new DeleteObjectCommand({ Bucket: overflowBucketName, Key: job.s3Key }))
+              .send(
+                new DeleteObjectCommand({
+                  Bucket: overflowBucketName,
+                  Key: job.s3Key,
+                }),
+              )
               .catch(() => {});
           }
           jobs.delete(jobId);
@@ -621,7 +733,9 @@ export const makeRenderQueue = ({
           const entryPath = path.join(rendersDirPath, entry);
           const stat = await fs.stat(entryPath).catch(() => null);
           if (stat && now - stat.mtimeMs > RENDER_TTL_MS) {
-            await fs.rm(entryPath, { recursive: true, force: true }).catch(() => {});
+            await fs
+              .rm(entryPath, { recursive: true, force: true })
+              .catch(() => {});
           }
         }
       } catch (error) {
@@ -635,11 +749,15 @@ export const makeRenderQueue = ({
       }
     });
 
-    return setInterval(() => sweep().catch((error) => {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-        console.error("Expiry sweep failed to read renders dir:", error);
-      }
-    }), intervalMs);
+    return setInterval(
+      () =>
+        sweep().catch((error) => {
+          if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+            console.error("Expiry sweep failed to read renders dir:", error);
+          }
+        }),
+      intervalMs,
+    );
   };
 
   const sweepInterval = startExpirySweep();

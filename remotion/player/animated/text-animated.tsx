@@ -1,7 +1,7 @@
 import { ITextDetails } from "@designcombo/types";
 import React, { useMemo } from "react";
 import { useCurrentFrame } from "remotion";
-import {getCharLayerStyles, getLineHeightPx, getWrappedTextLayout} from "../styles";
+import { getCharLayerStyles, getLineHeightPx, getWrappedTextLayout } from "../styles";
 import AnimatedTextIn from "./text-animated-types/animations-in/text-animated-in";
 import SunnyMorningsAnimationIn from "./text-animated-types/animations-in/sunny-mornings-in";
 import DominoDreamsIn from "./text-animated-types/animations-in/domino-dreams-in";
@@ -27,7 +27,7 @@ import Heartbeat from "./text-animated-types/animations-loop/heartbeat";
 import Wave from "./text-animated-types/animations-loop/wave";
 import ShakyLettersText from "./text-animated-types/animations-loop/shaky-letters-text";
 import PulseText from "./text-animated-types/animations-loop/pulse";
-import {AnimatedChar} from "./text-animated-types/animated-char";
+import { AnimatedChar } from "./text-animated-types/animated-char";
 import TypeWriterIn from "./text-animated-types/animations-in/type-writer-in";
 import SoundWaveIn from "./text-animated-types/animations-in/sound-wave-in";
 import BackgroundIn from "./text-animated-types/animations-in/background-in";
@@ -40,7 +40,7 @@ import FontChange from "./text-animated-types/animations-loop/font-change";
 import ShakeText from "./text-animated-types/animations-loop/shake-text";
 import Vintage from "./text-animated-types/animations-loop/vintage";
 import Glitch from "./text-animated-types/animations-loop/glitch";
-import {getKerningAdjustment} from "./text-animated-types/kerning";
+import { getKerningAdjustment } from "./text-animated-types/kerning";
 
 const animationsIn: { [key: string]: React.FC<any> } = {
   animatedTextIn: AnimatedTextIn,
@@ -271,7 +271,7 @@ export const TextAnimated: React.FC<{
           display: "flex",
           flexDirection: "column",
           alignItems:
-          details.textAlign === "left" ? "flex-start" : details.textAlign === "right" ? "flex-end" : "center",
+            details.textAlign === "left" ? "flex-start" : details.textAlign === "right" ? "flex-end" : "center",
           justifyContent: "center"
         }}
       >

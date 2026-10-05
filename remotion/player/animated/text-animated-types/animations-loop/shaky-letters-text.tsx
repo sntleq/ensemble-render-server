@@ -1,4 +1,4 @@
-import {AnimatedChar} from "../animated-char";
+import { AnimatedChar } from "../animated-char";
 
 function random(seed: number) {
   const x = Math.sin(seed) * 10000;

@@ -1,6 +1,6 @@
 import { spring } from "remotion";
-import {AnimatedChar} from "../animated-char";
-import {getCharTiming} from "../char-timing";
+import { AnimatedChar } from "../animated-char";
+import { getCharTiming } from "../char-timing";
 
 const DominoDreamsIn = ({
   char,

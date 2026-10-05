@@ -1,4 +1,4 @@
-import {AnimatedChar} from "../animated-char";
+import { AnimatedChar } from "../animated-char";
 
 const DropAnimationIn = ({
   char,

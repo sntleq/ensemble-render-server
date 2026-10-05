@@ -8,7 +8,11 @@ import path from "node:path";
 import { ensureBrowser } from "@remotion/renderer";
 import { videoEditorSchema } from "../remotion/schema";
 
-const { PORT = 3001, REMOTION_SERVE_URL, CLIENT_ORIGIN = "http://localhost:3000" } = process.env;
+const {
+  PORT = 3001,
+  REMOTION_SERVE_URL,
+  CLIENT_ORIGIN = "http://localhost:3000",
+} = process.env;
 
 function setupApp({ remotionBundleUrl }: { remotionBundleUrl: string }) {
   const app = express();
@@ -37,19 +41,26 @@ function setupApp({ remotionBundleUrl }: { remotionBundleUrl: string }) {
         const ext = path.extname(filePath);
         const jobId = path.basename(filePath, ext);
         const job = queue.jobs.get(jobId);
-        const projectName = job?.status === "completed" ? job.data.projectName : undefined;
+        const projectName =
+          job?.status === "completed" ? job.data.projectName : undefined;
 
-        res.setHeader("Content-Disposition", `attachment; filename="${sanitizeFilename(projectName ?? jobId)}${ext}"`);
+        res.setHeader(
+          "Content-Disposition",
+          `attachment; filename="${sanitizeFilename(projectName ?? jobId)}${ext}"`,
+        );
 
         if (res.req.method === "GET") {
           res.on("finish", () => {
             queue.deleteJob(jobId).catch((error) => {
-              console.error(`Failed to delete render output after download for job ${jobId}:`, error);
+              console.error(
+                `Failed to delete render output after download for job ${jobId}:`,
+                error,
+              );
             });
           });
         }
       },
-    })
+    }),
   );
   app.use(express.json({ limit: "50mb" }));
 
@@ -57,7 +68,12 @@ function setupApp({ remotionBundleUrl }: { remotionBundleUrl: string }) {
     const parsed = videoEditorSchema.safeParse(req.body);
 
     if (!parsed.success) {
-      res.status(400).json({ message: "Invalid render payload", issues: parsed.error.issues });
+      res
+        .status(400)
+        .json({
+          message: "Invalid render payload",
+          issues: parsed.error.issues,
+        });
       return;
     }
 
@@ -67,12 +83,15 @@ function setupApp({ remotionBundleUrl }: { remotionBundleUrl: string }) {
       return;
     }
 
-    const existing = queue.getActiveJobForUser(userId) ?? lambdaQueue.getActiveJobForUser(userId);
+    const existing =
+      queue.getActiveJobForUser(userId) ??
+      lambdaQueue.getActiveJobForUser(userId);
     if (existing) {
       res.status(409).json({
-        message: "You already have an export in progress or ready for download.",
+        message:
+          "You already have an export in progress or ready for download.",
         jobId: existing.jobId,
-        status: existing.job.status
+        status: existing.job.status,
       });
       return;
     }
@@ -81,12 +100,17 @@ function setupApp({ remotionBundleUrl }: { remotionBundleUrl: string }) {
 
     const violations = checkTierLimits(parsed.data, tier);
     if (violations.length > 0) {
-      res.status(403).json({ message: "Render exceeds plan limits", tier, violations });
+      res
+        .status(403)
+        .json({ message: "Render exceeds plan limits", tier, violations });
       return;
     }
 
     const target = getRenderTarget(parsed.data.type, tier);
-    const jobId = target === "server" ? queue.createJob(parsed.data, userId) : lambdaQueue.createJob(parsed.data, tier, userId);
+    const jobId =
+      target === "server"
+        ? queue.createJob(parsed.data, userId)
+        : lambdaQueue.createJob(parsed.data, tier, userId);
 
     res.json({ jobId, target });
   });
@@ -98,7 +122,9 @@ function setupApp({ remotionBundleUrl }: { remotionBundleUrl: string }) {
       return;
     }
 
-    const existing = queue.getActiveJobForUser(userId) ?? lambdaQueue.getActiveJobForUser(userId);
+    const existing =
+      queue.getActiveJobForUser(userId) ??
+      lambdaQueue.getActiveJobForUser(userId);
 
     if (!existing) {
       res.json({ jobId: null });
@@ -109,7 +135,9 @@ function setupApp({ remotionBundleUrl }: { remotionBundleUrl: string }) {
 
     if (job.status === "queued") {
       const inServerQueue = queue.jobs.has(jobId);
-      const queuePosition = inServerQueue ? queue.getQueuePosition(jobId) : lambdaQueue.getQueuePosition(jobId);
+      const queuePosition = inServerQueue
+        ? queue.getQueuePosition(jobId)
+        : lambdaQueue.getQueuePosition(jobId);
       res.json({ jobId, ...job, queuePosition });
       return;
     }
@@ -127,7 +155,9 @@ function setupApp({ remotionBundleUrl }: { remotionBundleUrl: string }) {
     }
 
     const inServerQueue = queue.jobs.has(jobId);
-    const job = inServerQueue ? queue.jobs.get(jobId) : lambdaQueue.jobs.get(jobId);
+    const job = inServerQueue
+      ? queue.jobs.get(jobId)
+      : lambdaQueue.jobs.get(jobId);
 
     // 404 (not 403) for a job that exists but belongs to someone else -
     // don't confirm a jobId is valid to a caller who doesn't own it.
@@ -137,7 +167,9 @@ function setupApp({ remotionBundleUrl }: { remotionBundleUrl: string }) {
     }
 
     if (job.status === "queued") {
-      const queuePosition = inServerQueue ? queue.getQueuePosition(jobId) : lambdaQueue.getQueuePosition(jobId);
+      const queuePosition = inServerQueue
+        ? queue.getQueuePosition(jobId)
+        : lambdaQueue.getQueuePosition(jobId);
       res.json({ ...job, queuePosition });
       return;
     }
@@ -155,14 +187,18 @@ function setupApp({ remotionBundleUrl }: { remotionBundleUrl: string }) {
     }
 
     const inServerQueue = queue.jobs.has(jobId);
-    const job = inServerQueue ? queue.jobs.get(jobId) : lambdaQueue.jobs.get(jobId);
+    const job = inServerQueue
+      ? queue.jobs.get(jobId)
+      : lambdaQueue.jobs.get(jobId);
 
     if (!job || job.userId !== userId) {
       res.status(404).json({ message: "Job not found" });
       return;
     }
 
-    const deleted = inServerQueue ? await queue.deleteJob(jobId) : await lambdaQueue.deleteJob(jobId);
+    const deleted = inServerQueue
+      ? await queue.deleteJob(jobId)
+      : await lambdaQueue.deleteJob(jobId);
 
     if (!deleted) {
       res.status(404).json({ message: "Job not found" });
@@ -190,11 +226,11 @@ async function main() {
   const remotionBundleUrl = REMOTION_SERVE_URL
     ? REMOTION_SERVE_URL
     : await bundle({
-      entryPoint: path.resolve("remotion/index.ts"),
-      onProgress(progress) {
-        console.info(`Bundling Remotion project: ${progress}%`);
-      },
-    });
+        entryPoint: path.resolve("remotion/index.ts"),
+        onProgress(progress) {
+          console.info(`Bundling Remotion project: ${progress}%`);
+        },
+      });
 
   const app = setupApp({ remotionBundleUrl });
 
