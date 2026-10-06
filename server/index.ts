@@ -8,6 +8,11 @@ import path from "node:path";
 import { ensureBrowser } from "@remotion/renderer";
 import { videoEditorSchema } from "../remotion/schema";
 import { contentDispositionFor, sanitizeFilename } from "./filename";
+import {
+  renderThumbnail,
+  isInternalSecret,
+  THUMBNAIL_KEY_PATTERN,
+} from "./thumbnail";
 
 const {
   PORT = 3001,
@@ -201,6 +206,41 @@ function setupApp({ remotionBundleUrl }: { remotionBundleUrl: string }) {
     }
 
     res.json({ message: "Job deleted" });
+  });
+
+  // Server-to-server only (the editor's collab server). No user identity, no
+  // per-user queue, no tier limits.
+  app.post("/thumbnails", async (req, res) => {
+    if (!isInternalSecret(req.header("x-internal-secret"))) {
+      res.status(401).json({ message: "Unauthorized" });
+      return;
+    }
+
+    const { payload, outKey } = req.body ?? {};
+
+    if (typeof outKey !== "string" || !THUMBNAIL_KEY_PATTERN.test(outKey)) {
+      res.status(400).json({ message: "Invalid outKey" });
+      return;
+    }
+
+    const parsed = videoEditorSchema.safeParse(payload);
+    if (!parsed.success) {
+      res
+        .status(400)
+        .json({
+          message: "Invalid thumbnail payload",
+          issues: parsed.error.issues,
+        });
+      return;
+    }
+
+    try {
+      const result = await renderThumbnail(parsed.data, outKey);
+      res.json(result);
+    } catch (error) {
+      console.error("Thumbnail render failed:", error);
+      res.status(502).json({ message: "Thumbnail render failed" });
+    }
   });
 
   const shutdown = (signal: string) => {
