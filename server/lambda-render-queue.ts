@@ -7,6 +7,7 @@ import { randomUUID } from "node:crypto";
 import type { VideoEditorSchemaProps } from "../remotion/schema";
 import { S3Client, DeleteObjectCommand } from "@aws-sdk/client-s3";
 import { Tier } from "./tiers";
+import { asciiFileName } from "./filename";
 
 type JobData = VideoEditorSchemaProps;
 
@@ -70,12 +71,6 @@ const MEDIA_CODEC_MAP: Record<string, LambdaCodec> = {
 const STILL_FORMAT_MAP: Record<string, "png" | "jpeg"> = {
   png: "png",
   jpeg: "jpeg",
-};
-
-const sanitizeFilename = (name: string): string => {
-  const trimmed = name.trim();
-  if (!trimmed) return "Untitled";
-  return trimmed.replace(/[/\\?%*:|"<>]/g, "-");
 };
 
 type Lane = "stillsAudio" | "proBusiness";
@@ -306,7 +301,7 @@ export const makeLambdaRenderQueue = () => {
       outName: { bucketName, key: outKey },
       downloadBehavior: {
         type: "download",
-        fileName: `${sanitizeFilename(data.projectName)}.${data.format}`,
+        fileName: `${asciiFileName(data.projectName)}.${data.format}`,
       },
     });
 
@@ -378,7 +373,7 @@ export const makeLambdaRenderQueue = () => {
       outName: { bucketName, key: outKey },
       downloadBehavior: {
         type: "download",
-        fileName: `${sanitizeFilename(data.projectName)}.${data.format}`,
+        fileName: `${asciiFileName(data.projectName)}.${data.format}`,
       },
     });
 

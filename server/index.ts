@@ -7,6 +7,7 @@ import { bundle } from "@remotion/bundler";
 import path from "node:path";
 import { ensureBrowser } from "@remotion/renderer";
 import { videoEditorSchema } from "../remotion/schema";
+import { contentDispositionFor, sanitizeFilename } from "./filename";
 
 const {
   PORT = 3001,
@@ -27,12 +28,6 @@ function setupApp({ remotionBundleUrl }: { remotionBundleUrl: string }) {
 
   const lambdaQueue = makeLambdaRenderQueue();
 
-  const sanitizeFilename = (name: string): string => {
-    const trimmed = name.trim();
-    if (!trimmed) return "Untitled";
-    return trimmed.replace(/[/\\?%*:|"<>]/g, "-");
-  };
-
   app.use(cors({ origin: CLIENT_ORIGIN }));
   app.use(
     "/renders",
@@ -46,7 +41,7 @@ function setupApp({ remotionBundleUrl }: { remotionBundleUrl: string }) {
 
         res.setHeader(
           "Content-Disposition",
-          `attachment; filename="${sanitizeFilename(projectName ?? jobId)}${ext}"`,
+          contentDispositionFor(projectName ?? jobId, ext),
         );
 
         if (res.req.method === "GET") {

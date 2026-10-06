@@ -17,6 +17,7 @@ import { createWriteStream } from "node:fs";
 import { ZipArchive } from "archiver";
 import { S3Client, DeleteObjectCommand } from "@aws-sdk/client-s3";
 import type { VideoEditorSchemaProps } from "../remotion/schema";
+import { asciiFileName } from "./filename";
 
 type JobData = VideoEditorSchemaProps;
 
@@ -93,12 +94,6 @@ const LAMBDA_MEDIA_CODEC_MAP: Record<
   mov: "prores",
   mkv: "h264",
   gif: "gif",
-};
-
-const sanitizeFilename = (name: string): string => {
-  const trimmed = name.trim();
-  if (!trimmed) return "Untitled";
-  return trimmed.replace(/[/\\?%*:|"<>]/g, "-");
 };
 
 const zipDirectory = (
@@ -569,7 +564,7 @@ export const makeRenderQueue = ({
           outName: { bucketName: overflowBucketName, key: outKey },
           downloadBehavior: {
             type: "download",
-            fileName: `${sanitizeFilename(data.projectName)}.${data.format}`,
+            fileName: `${asciiFileName(data.projectName)}.${data.format}`,
           },
         });
 
