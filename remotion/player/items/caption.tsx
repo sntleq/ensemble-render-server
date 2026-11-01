@@ -34,6 +34,16 @@ export default function Caption({
   item: ICaption;
   options: SequenceItemOptions;
 }) {
+  return BaseSequence({ item, options, children: options.visualsActive === false ? null : <CaptionContent item={item} options={options} /> });
+}
+
+function CaptionContent({
+  item,
+  options
+}: {
+  item: ICaption;
+  options: SequenceItemOptions;
+}) {
   const { fps, frame } = options;
   const { details, display, animations } = item as ICaption;
   const { animationIn, animationOut, animationTimed } = getAnimations(
@@ -210,7 +220,7 @@ export default function Caption({
     </BoxAnim>
   );
 
-  return BaseSequence({ item, options, children });
+  return children;
 }
 
 // Helper functions

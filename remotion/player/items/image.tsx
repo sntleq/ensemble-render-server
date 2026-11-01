@@ -13,6 +13,16 @@ export default function Image({
   item: IImage;
   options: SequenceItemOptions;
 }) {
+  return BaseSequence({ item, options, children: options.visualsActive === false ? null : <ImageContent item={item} options={options} /> });
+}
+
+function ImageContent({
+  item,
+  options
+}: {
+  item: IImage;
+  options: SequenceItemOptions;
+}) {
   const { fps, frame } = options;
   const { details, animations } = item;
   const { animationIn, animationOut, animationTimed } = getAnimations(
@@ -73,5 +83,5 @@ export default function Image({
     </BoxAnim>
   );
 
-  return BaseSequence({ item, options, children });
+  return children;
 }

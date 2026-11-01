@@ -1,3 +1,4 @@
+import { renderDownloadUrl } from "./auth";
 import {
   makeCancelSignal,
   renderMedia,
@@ -349,7 +350,7 @@ export const makeRenderQueue = ({
 
         jobs.set(jobId, {
           status: "completed",
-          videoUrl: `${publicBaseUrl}/renders/${jobId}.${job.data.format}`,
+          videoUrl: renderDownloadUrl(publicBaseUrl, `${jobId}.${job.data.format}`),
           data: job.data,
           renderedVia: "local",
           outputPath,
@@ -416,7 +417,7 @@ export const makeRenderQueue = ({
 
         jobs.set(jobId, {
           status: "completed",
-          videoUrl: `${publicBaseUrl}/renders/${jobId}.zip`,
+          videoUrl: renderDownloadUrl(publicBaseUrl, `${jobId}.zip`),
           data: job.data,
           renderedVia: "local",
           outputPath: zipPath,
@@ -490,7 +491,7 @@ export const makeRenderQueue = ({
 
       jobs.set(jobId, {
         status: "completed",
-        videoUrl: `${publicBaseUrl}/renders/${jobId}.${mediaFormat.ext}`,
+        videoUrl: renderDownloadUrl(publicBaseUrl, `${jobId}.${mediaFormat.ext}`),
         data: job.data,
         renderedVia: "local",
         outputPath,

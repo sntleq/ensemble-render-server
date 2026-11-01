@@ -1,8 +1,10 @@
+import { requireRenderIdentity, requireDownloadSignature, isInternalSecret } from "./auth";
 import express from "express";
+import { publicRenderJob } from "./public-render-job";
 import cors from "cors";
 import { makeRenderQueue } from "./render-queue";
 import { makeLambdaRenderQueue } from "./lambda-render-queue";
-import { getTierForUser, getRenderTarget, checkTierLimits } from "./tiers";
+import { parseRenderTier, getRenderTarget, checkTierLimits } from "./tiers";
 import { bundle } from "@remotion/bundler";
 import path from "node:path";
 import { ensureBrowser } from "@remotion/renderer";
@@ -10,7 +12,6 @@ import { videoEditorSchema } from "../remotion/schema";
 import { contentDispositionFor, sanitizeFilename } from "./filename";
 import {
   renderThumbnail,
-  isInternalSecret,
   THUMBNAIL_KEY_PATTERN,
 } from "./thumbnail";
 
@@ -34,6 +35,13 @@ function setupApp({ remotionBundleUrl }: { remotionBundleUrl: string }) {
   const lambdaQueue = makeLambdaRenderQueue();
 
   app.use(cors({ origin: CLIENT_ORIGIN }));
+  app.use("/renders", (req, res, next) => {
+    if (isInternalSecret(req.header("x-internal-secret"))) {
+      requireRenderIdentity(req, res, next);
+    } else {
+      requireDownloadSignature(req, res, next);
+    }
+  });
   app.use(
     "/renders",
     express.static(rendersDir, {
@@ -62,6 +70,7 @@ function setupApp({ remotionBundleUrl }: { remotionBundleUrl: string }) {
       },
     }),
   );
+  app.use("/renders", requireRenderIdentity);
   app.use(express.json({ limit: "50mb" }));
 
   app.post("/renders", async (req, res) => {
@@ -96,7 +105,11 @@ function setupApp({ remotionBundleUrl }: { remotionBundleUrl: string }) {
       return;
     }
 
-    const tier = getTierForUser(userId);
+    const tier = parseRenderTier(req.header("x-render-tier"));
+    if (!tier) {
+      res.status(403).json({ message: "Missing or invalid render entitlement" });
+      return;
+    }
 
     const violations = checkTierLimits(parsed.data, tier);
     if (violations.length > 0) {
@@ -138,11 +151,11 @@ function setupApp({ remotionBundleUrl }: { remotionBundleUrl: string }) {
       const queuePosition = inServerQueue
         ? queue.getQueuePosition(jobId)
         : lambdaQueue.getQueuePosition(jobId);
-      res.json({ jobId, ...job, queuePosition });
+      res.json({ jobId, ...publicRenderJob(job), queuePosition });
       return;
     }
 
-    res.json({ jobId, ...job });
+    res.json({ jobId, ...publicRenderJob(job) });
   });
 
   app.get("/renders/:jobId", (req, res) => {
@@ -170,11 +183,11 @@ function setupApp({ remotionBundleUrl }: { remotionBundleUrl: string }) {
       const queuePosition = inServerQueue
         ? queue.getQueuePosition(jobId)
         : lambdaQueue.getQueuePosition(jobId);
-      res.json({ ...job, queuePosition });
+      res.json({ ...publicRenderJob(job), queuePosition });
       return;
     }
 
-    res.json(job);
+    res.json(publicRenderJob(job));
   });
 
   app.delete("/renders/:jobId", async (req, res) => {

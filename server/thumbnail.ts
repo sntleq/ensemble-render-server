@@ -1,5 +1,4 @@
 import { renderStillOnLambda } from "@remotion/lambda/client";
-import { timingSafeEqual } from "node:crypto";
 import type { VideoEditorSchemaProps } from "../remotion/schema";
 
 type LambdaRegion = Parameters<typeof renderStillOnLambda>[0]["region"];
@@ -9,7 +8,6 @@ const {
   REMOTION_LAMBDA_SERVE_URL,
   REMOTION_LAMBDA_FUNCTION_NAME,
   OUTPUT_BUCKET_NAME,
-  INTERNAL_API_SECRET,
 } = process.env;
 
 const JPEG_QUALITY = 80;
@@ -19,13 +17,6 @@ const MAX_CONCURRENT = 3;
 
 // Only lets the editor write under thumbnails/<projectId>/<hash>.jpg
 export const THUMBNAIL_KEY_PATTERN = /^thumbnails\/[\w-]+\/[0-9a-f]{16}\.jpg$/;
-
-export const isInternalSecret = (provided: string | undefined): boolean => {
-  if (!INTERNAL_API_SECRET || !provided) return false;
-  const a = Buffer.from(provided);
-  const b = Buffer.from(INTERNAL_API_SECRET);
-  return a.length === b.length && timingSafeEqual(a, b);
-};
 
 let active = 0;
 const waiting: Array<() => void> = [];

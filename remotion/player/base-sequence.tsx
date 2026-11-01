@@ -14,6 +14,8 @@ export interface SequenceItemOptions {
   size?: ISize;
   frame?: number;
   isTransition?: boolean;
+  // A video-containing scene can stay mounted while its visual content is inactive.
+  visualsActive?: boolean;
   // true only for items rendered inside a Scene's nested content layer —
   // a read-only snapshot that must never be individually selectable/
   // draggable in the player
