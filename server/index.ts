@@ -4,6 +4,7 @@ import { publicRenderJob } from "./public-render-job";
 import cors from "cors";
 import { makeRenderQueue } from "./render-queue";
 import { makeLambdaRenderQueue } from "./lambda-render-queue";
+import { makeLambdaCapacity } from "./lambda-capacity";
 import { parseRenderTier, getRenderTarget, checkTierLimits } from "./tiers";
 import { bundle } from "@remotion/bundler";
 import path from "node:path";
@@ -26,13 +27,15 @@ function setupApp({ remotionBundleUrl }: { remotionBundleUrl: string }) {
 
   const rendersDir = path.resolve("renders");
 
+  const lambdaCapacity = makeLambdaCapacity();
   const queue = makeRenderQueue({
     port: Number(PORT),
     serveUrl: remotionBundleUrl,
     rendersDir,
+    lambdaCapacity,
   });
 
-  const lambdaQueue = makeLambdaRenderQueue();
+  const lambdaQueue = makeLambdaRenderQueue(lambdaCapacity);
 
   app.use(cors({ origin: CLIENT_ORIGIN }));
   app.use("/renders", (req, res, next) => {
@@ -92,30 +95,37 @@ function setupApp({ remotionBundleUrl }: { remotionBundleUrl: string }) {
       return;
     }
 
-    const existing =
-      queue.getActiveJobForUser(userId) ??
-      lambdaQueue.getActiveJobForUser(userId);
-    if (existing) {
-      res.status(409).json({
-        message:
-          "You already have an export in progress or ready for download.",
-        jobId: existing.jobId,
-        status: existing.job.status,
-      });
-      return;
-    }
-
     const tier = parseRenderTier(req.header("x-render-tier"));
     if (!tier) {
       res.status(403).json({ message: "Missing or invalid render entitlement" });
       return;
     }
 
-    const violations = checkTierLimits(parsed.data, tier);
+    let violations: string[];
+    try {
+      violations = await checkTierLimits(parsed.data, tier);
+    } catch {
+      res.status(503).json({ message: "Your plan limits are unavailable. Please try again later." });
+      return;
+    }
     if (violations.length > 0) {
       res
         .status(403)
         .json({ message: "Render exceeds plan limits", tier, violations });
+      return;
+    }
+
+    // Do this after the DB await, immediately before synchronous enqueueing,
+    // so simultaneous submissions cannot both claim the user's export slot.
+    const existing =
+      queue.getActiveJobForUser(userId) ??
+      lambdaQueue.getActiveJobForUser(userId);
+    if (existing) {
+      res.status(409).json({
+        message: "You already have an export in progress or ready for download.",
+        jobId: existing.jobId,
+        status: existing.job.status,
+      });
       return;
     }
 
@@ -259,6 +269,7 @@ function setupApp({ remotionBundleUrl }: { remotionBundleUrl: string }) {
   const shutdown = (signal: string) => {
     console.info(`Received ${signal}, shutting down.`);
     queue.stopExpirySweep();
+    lambdaCapacity.stop();
     process.exit(0);
   };
 

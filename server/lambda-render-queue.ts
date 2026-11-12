@@ -8,6 +8,7 @@ import type { VideoEditorSchemaProps } from "../remotion/schema";
 import { S3Client, DeleteObjectCommand } from "@aws-sdk/client-s3";
 import { Tier } from "./tiers";
 import { asciiFileName } from "./filename";
+import type { LambdaCapacity } from "./lambda-capacity";
 
 type JobData = VideoEditorSchemaProps;
 
@@ -80,37 +81,9 @@ const getLane = (data: JobData): Lane =>
     ? "stillsAudio"
     : "proBusiness";
 
-// Worker concurrency per video tier (+1 orchestrator invocation each, added
-// automatically by renderMediaOnLambda - not part of the concurrency count)
-const VIDEO_WORKER_CONCURRENCY: Record<"pro" | "business", number> = {
-  pro: 21, // 21 + 1 = 22 invocations per render
-  business: 40, // 40 + 1 = 41 invocations per render
-};
-
-// Invocation cost per render, used against each lane's budget below.
-// image: single renderStillOnLambda call, no chunking = 1
-// audio: concurrency:1 + 1 orchestrator = 2
-// video: tier-based worker count + 1 orchestrator (see VIDEO_WORKER_CONCURRENCY)
-const invocationCost = (data: JobData, tier: Tier): number => {
-  if (data.type === "audio") return 2;
-  if (data.type === "image") return 1;
-  const workers =
-    VIDEO_WORKER_CONCURRENCY[tier as "pro" | "business"] ??
-    VIDEO_WORKER_CONCURRENCY.pro;
-  return workers + 1;
-};
-
-// Both lanes draw from the same 1000-invocation AWS account limit, reserved
-// as fixed budgets: stillsAudio gets 50, proBusiness gets the remaining 902
-// (free-overflow, handled entirely in render-queue.ts, reserves the other 48)
-const LANE_INVOCATION_BUDGET: Record<Lane, number> = {
-  stillsAudio: 50,
-  proBusiness: 902,
-};
-
 const DOWNLOAD_GRACE_MS = 10 * 60 * 1000;
 
-export const makeLambdaRenderQueue = () => {
+export const makeLambdaRenderQueue = (lambdaCapacity: LambdaCapacity) => {
   const missing = [
     ["REMOTION_AWS_REGION", REMOTION_AWS_REGION],
     ["REMOTION_LAMBDA_SERVE_URL", REMOTION_LAMBDA_SERVE_URL],
@@ -135,20 +108,7 @@ export const makeLambdaRenderQueue = () => {
   // this just stops the app from tracking/reporting on a job after cancel.
   const cancelledJobIds = new Set<string>();
 
-  const activeInvocations: Record<Lane, number> = {
-    stillsAudio: 0,
-    proBusiness: 0,
-  };
-
   const pendingJobIds: string[] = [];
-
-  const canAdmit = (data: JobData, tier: Tier): boolean => {
-    const lane = getLane(data);
-    return (
-      activeInvocations[lane] + invocationCost(data, tier) <=
-      LANE_INVOCATION_BUDGET[lane]
-    );
-  };
 
   const runNext = () => {
     for (let i = 0; i < pendingJobIds.length; i++) {
@@ -160,14 +120,14 @@ export const makeLambdaRenderQueue = () => {
         continue;
       }
 
-      if (!canAdmit(job.data, job.tier)) continue;
+      const reservation = lambdaCapacity.tryAcquire(
+        getLane(job.data), job.tier,
+        job.data.type === "image" ? "image" : job.data.type === "audio" ? "audio" : "video",
+      );
+      if (!reservation) continue;
 
       pendingJobIds.splice(i, 1);
       i--;
-
-      const lane = getLane(job.data);
-      const cost = invocationCost(job.data, job.tier);
-      activeInvocations[lane] += cost;
 
       const start =
         job.data.type === "image"
@@ -184,9 +144,14 @@ export const makeLambdaRenderQueue = () => {
               job.userId,
               job.createdAt,
               job.tier,
+              reservation.workers,
             );
       start
-        .catch((error) =>
+        .catch((error) => {
+          if (cancelledJobIds.delete(jobId)) {
+            jobs.delete(jobId);
+            return;
+          }
           jobs.set(jobId, {
             status: "failed",
             error,
@@ -194,11 +159,10 @@ export const makeLambdaRenderQueue = () => {
             tier: job.tier,
             userId: job.userId,
             createdAt: job.createdAt,
-          }),
-        )
+          });
+        })
         .finally(() => {
-          activeInvocations[lane] -= cost;
-          runNext();
+          reservation.release();
         });
     }
   };
@@ -267,6 +231,7 @@ export const makeLambdaRenderQueue = () => {
     userId: string,
     createdAt: number,
     tier: Tier,
+    workers: number,
   ) => {
     const codec = MEDIA_CODEC_MAP[data.format];
     if (!codec)
@@ -279,11 +244,14 @@ export const makeLambdaRenderQueue = () => {
     const scale = data.resolution / shorterDimension;
     const bitrateArg =
       data.bitrate != null ? (`${data.bitrate}k` as const) : undefined;
-    const concurrency =
-      data.type === "audio"
-        ? 1
-        : (VIDEO_WORKER_CONCURRENCY[tier as "pro" | "business"] ??
-          VIDEO_WORKER_CONCURRENCY.pro);
+    const concurrency = data.type === "audio" ? 1 : workers;
+
+    // Mark as running before submission so cancellation during startup is
+    // tracked without discarding the Lambda reservation.
+    jobs.set(jobId, {
+      status: "in-progress", progress: 0, data, tier, userId, createdAt,
+      cancel: () => cancelledJobIds.add(jobId),
+    });
 
     const { renderId, bucketName: siteBucketName } = await renderMediaOnLambda({
       region,
@@ -305,16 +273,7 @@ export const makeLambdaRenderQueue = () => {
       },
     });
 
-    jobs.set(jobId, {
-      status: "in-progress",
-      progress: 0,
-      data,
-      tier,
-      cancel: () => cancelledJobIds.add(jobId),
-      userId: userId,
-      createdAt: createdAt,
-    });
-    pollUntilDone(
+    await pollUntilDone(
       jobId,
       renderId,
       siteBucketName,
@@ -323,16 +282,7 @@ export const makeLambdaRenderQueue = () => {
       userId,
       createdAt,
       tier,
-    ).catch((error) => {
-      jobs.set(jobId, {
-        status: "failed",
-        error,
-        data,
-        tier,
-        userId: userId,
-        createdAt: createdAt,
-      });
-    });
+    );
   };
 
   const startStillRender = async (
@@ -406,18 +356,28 @@ export const makeLambdaRenderQueue = () => {
     tier: Tier,
   ) => {
     while (true) {
-      if (cancelledJobIds.has(jobId)) {
-        cancelledJobIds.delete(jobId);
-        jobs.delete(jobId);
-        return;
-      }
-
       const progress = await getRenderProgress({
         renderId,
         bucketName: siteBucketName,
         functionName,
         region,
-      });
+      }).catch(() => null);
+
+      // A failed status request or UI cancellation does not stop AWS workers.
+      // Keep the reservation until Lambda reports a terminal result.
+      if (!progress) {
+        await new Promise((r) => setTimeout(r, 1200));
+        continue;
+      }
+      if (cancelledJobIds.has(jobId)) {
+        if (progress.done || progress.fatalErrorEncountered) {
+          cancelledJobIds.delete(jobId);
+          jobs.delete(jobId);
+          return;
+        }
+        await new Promise((r) => setTimeout(r, 1200));
+        continue;
+      }
 
       if (progress.fatalErrorEncountered) {
         console.error(
@@ -498,6 +458,8 @@ export const makeLambdaRenderQueue = () => {
     jobs.delete(jobId);
     return true;
   };
+
+  lambdaCapacity.subscribe(runNext);
 
   return {
     jobs,

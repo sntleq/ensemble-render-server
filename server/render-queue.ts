@@ -19,6 +19,7 @@ import { ZipArchive } from "archiver";
 import { S3Client, DeleteObjectCommand } from "@aws-sdk/client-s3";
 import type { VideoEditorSchemaProps } from "../remotion/schema";
 import { asciiFileName } from "./filename";
+import type { LambdaCapacity } from "./lambda-capacity";
 
 type JobData = VideoEditorSchemaProps;
 
@@ -122,10 +123,12 @@ export const makeRenderQueue = ({
   port,
   serveUrl,
   rendersDir,
+  lambdaCapacity,
 }: {
   port: number;
   serveUrl: string;
   rendersDir: string;
+  lambdaCapacity: LambdaCapacity;
 }) => {
   const jobs = new Map<string, JobState>();
   const cancelledJobIds = new Set<string>(); // local renders - cancelSignal race guard
@@ -133,9 +136,6 @@ export const makeRenderQueue = ({
 
   const MAX_LOCAL_JOBS = 4;
   const PER_JOB_CONCURRENCY = 2;
-
-  const MAX_OVERFLOW_JOBS = 16; // lambda, video only
-  const OVERFLOW_LAMBDA_COUNT = 2; // + 1 orchestrator = 3 per render
 
   const {
     REMOTION_AWS_REGION,
@@ -181,7 +181,6 @@ export const makeRenderQueue = ({
 
   const pendingJobIds: string[] = [];
   let activeLocalCount = 0;
-  let activeOverflowCount = 0;
 
   // only free-tier video ever reaches this queue as type "video" - image
   // (any tier) and image-sequence (any tier) can't be chunked/rendered via
@@ -199,10 +198,11 @@ export const makeRenderQueue = ({
       }
 
       const hasLocalSlot = activeLocalCount < MAX_LOCAL_JOBS;
-      const hasOverflowSlot =
-        canOverflow(job.data) && activeOverflowCount < MAX_OVERFLOW_JOBS;
+      const overflowReservation = !hasLocalSlot && canOverflow(job.data)
+        ? lambdaCapacity.tryAcquire("freeOverflow", "free", "video")
+        : null;
 
-      if (!hasLocalSlot && !hasOverflowSlot) continue;
+      if (!hasLocalSlot && !overflowReservation) continue;
 
       pendingJobIds.splice(i, 1);
       i--;
@@ -217,9 +217,8 @@ export const makeRenderQueue = ({
             activeLocalCount--;
             runNext();
           });
-      } else {
-        activeOverflowCount++;
-        processOverflowRender(jobId)
+      } else if (overflowReservation) {
+        processOverflowRender(jobId, overflowReservation.workers)
           .catch((error) =>
             console.error(
               `Unhandled error processing overflow job ${jobId}:`,
@@ -227,8 +226,7 @@ export const makeRenderQueue = ({
             ),
           )
           .finally(() => {
-            activeOverflowCount--;
-            runNext();
+            overflowReservation.release();
           });
       }
     }
@@ -515,7 +513,7 @@ export const makeRenderQueue = ({
 
   // === lambda overflow rendering: free-tier video only, when local is full ===
 
-  const processOverflowRender = async (jobId: string) => {
+  const processOverflowRender = async (jobId: string, workers: number) => {
     const job = jobs.get(jobId);
     if (!job || job.data.type !== "video") return;
 
@@ -560,7 +558,7 @@ export const makeRenderQueue = ({
           codec,
           scale,
           videoBitrate: codec !== "gif" ? bitrateArg : undefined,
-          concurrency: OVERFLOW_LAMBDA_COUNT,
+          concurrency: workers,
           privacy: "no-acl",
           outName: { bucketName: overflowBucketName, key: outKey },
           downloadBehavior: {
@@ -570,18 +568,28 @@ export const makeRenderQueue = ({
         });
 
       while (true) {
-        if (cancelledOverflowJobIds.has(jobId)) {
-          cancelledOverflowJobIds.delete(jobId);
-          jobs.delete(jobId);
-          return;
-        }
-
         const progress = await getRenderProgress({
           renderId,
           bucketName: siteBucketName,
           functionName: overflowFunctionName,
           region: overflowRegion,
-        });
+        }).catch(() => null);
+
+        // Cancellation hides the job but cannot stop already invoked AWS
+        // workers. Keep its capacity reserved until a terminal result.
+        if (!progress) {
+          await new Promise((r) => setTimeout(r, 1200));
+          continue;
+        }
+        if (cancelledOverflowJobIds.has(jobId)) {
+          jobs.delete(jobId);
+          if (progress.done || progress.fatalErrorEncountered) {
+            cancelledOverflowJobIds.delete(jobId);
+            return;
+          }
+          await new Promise((r) => setTimeout(r, 1200));
+          continue;
+        }
 
         if (progress.fatalErrorEncountered) {
           jobs.set(jobId, {
@@ -757,6 +765,7 @@ export const makeRenderQueue = ({
   };
 
   const sweepInterval = startExpirySweep();
+  const unsubscribeCapacity = lambdaCapacity.subscribe(runNext);
 
   return {
     jobs,
@@ -764,6 +773,6 @@ export const makeRenderQueue = ({
     getQueuePosition,
     getActiveJobForUser,
     deleteJob,
-    stopExpirySweep: () => clearInterval(sweepInterval),
+    stopExpirySweep: () => { clearInterval(sweepInterval); unsubscribeCapacity(); },
   };
 };
