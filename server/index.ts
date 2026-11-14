@@ -1,4 +1,5 @@
 import { requireRenderIdentity, requireDownloadSignature, isInternalSecret } from "./auth";
+import { isWatermarkRequired } from "./watermark-policy";
 import express from "express";
 import { publicRenderJob } from "./public-render-job";
 import cors from "cors";
@@ -103,6 +104,9 @@ function setupApp({ remotionBundleUrl }: { remotionBundleUrl: string }) {
 
     let violations: string[];
     try {
+      const watermarkRequired = parsed.data.type !== "audio" && await isWatermarkRequired(userId);
+      parsed.data.ensembleWatermark = parsed.data.type !== "audio" &&
+        (watermarkRequired || parsed.data.ensembleWatermark !== false);
       violations = await checkTierLimits(parsed.data, tier);
     } catch {
       res.status(503).json({ message: "Your plan limits are unavailable. Please try again later." });
@@ -136,6 +140,11 @@ function setupApp({ remotionBundleUrl }: { remotionBundleUrl: string }) {
         : lambdaQueue.createJob(parsed.data, tier, userId);
 
     res.json({ jobId, target });
+  });
+
+  // Registered before /renders/:jobId and protected by requireRenderIdentity.
+  app.get("/renders/capabilities", (_req, res) => {
+    res.json({ ensembleWatermark: true, ensembleWatermarkPlanFeatures: true });
   });
 
   app.get("/renders/mine", (req, res) => {

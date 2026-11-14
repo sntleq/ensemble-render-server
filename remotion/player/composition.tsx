@@ -3,9 +3,10 @@ import { ITrackItem, ITransition } from "@designcombo/types";
 import { VideoEditorSchemaProps } from "../schema";
 import { getBackgroundFillStyle } from "./styles";
 import { RenderVisibleItems } from "./render-visible-items";
+import { EnsembleWatermark } from "./ensemble-watermark";
 
 const Composition: React.FC<VideoEditorSchemaProps> = ({
-  trackItemIds, trackItemsMap, transitionsMap, fps, size, background,
+  trackItemIds, trackItemsMap, transitionsMap, fps, size, background, ensembleWatermark,
 }) => {
   const frame = useCurrentFrame();
   return (
@@ -18,6 +19,7 @@ const Composition: React.FC<VideoEditorSchemaProps> = ({
         size={size}
         frame={frame}
       />
+      {ensembleWatermark && <EnsembleWatermark width={size.width} height={size.height} />}
     </AbsoluteFill>
   );
 };

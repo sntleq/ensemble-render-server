@@ -29,6 +29,7 @@ export const videoEditorSchema = z.object({
   format: exportFormatSchema,
   resolution: z.number(),
   bitrate: z.number().nullable(),
+  ensembleWatermark: z.boolean().optional(),
   currentTime: z.number().optional()
 });
 
