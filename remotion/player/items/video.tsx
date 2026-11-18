@@ -7,6 +7,8 @@ import { calculateFrames } from "../../utils/frames";
 import { Video as RemotionVideo } from "@remotion/media";
 import { OffthreadVideo, useRemotionEnvironment } from "remotion";
 
+const videoBoxStyle = { width: "100%", height: "100%", display: "block" } as const;
+
 // Real component, so the hook lives in its own fiber. Video() below is called
 // as a plain function from renderVisibleItems, so it must not call hooks.
 const VideoMedia = ({ item, fps }: { item: IVideo; fps: number }) => {
@@ -28,6 +30,7 @@ const VideoMedia = ({ item, fps }: { item: IVideo; fps: number }) => {
         playbackRate={playbackRate}
         src={details.src}
         volume={volume}
+        style={{ ...videoBoxStyle, objectFit: "cover" }}
       />
     );
   }
@@ -39,6 +42,8 @@ const VideoMedia = ({ item, fps }: { item: IVideo; fps: number }) => {
       playbackRate={playbackRate}
       src={details.src}
       volume={volume}
+      style={videoBoxStyle}
+      objectFit="cover"
     />
   );
 };

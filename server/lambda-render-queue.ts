@@ -4,13 +4,13 @@ import {
   getRenderProgress,
 } from "@remotion/lambda/client";
 import { randomUUID } from "node:crypto";
-import type { VideoEditorSchemaProps } from "../remotion/schema";
+import type { RenderJobData } from "./portfolio-render";
 import { S3Client, DeleteObjectCommand } from "@aws-sdk/client-s3";
 import { Tier } from "./tiers";
 import { asciiFileName } from "./filename";
 import type { LambdaCapacity } from "./lambda-capacity";
 
-type JobData = VideoEditorSchemaProps;
+type JobData = RenderJobData;
 
 type LambdaRegion = Parameters<typeof renderMediaOnLambda>[0]["region"];
 type LambdaCodec = Parameters<typeof renderMediaOnLambda>[0]["codec"];
@@ -254,6 +254,7 @@ export const makeLambdaRenderQueue = (lambdaCapacity: LambdaCapacity) => {
     });
 
     const { renderId, bucketName: siteBucketName } = await renderMediaOnLambda({
+      frameRange: data.portfolioFrameRange,
       region,
       functionName,
       serveUrl,

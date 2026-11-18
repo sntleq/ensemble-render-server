@@ -17,11 +17,11 @@ import fs from "node:fs/promises";
 import { createWriteStream } from "node:fs";
 import { ZipArchive } from "archiver";
 import { S3Client, DeleteObjectCommand } from "@aws-sdk/client-s3";
-import type { VideoEditorSchemaProps } from "../remotion/schema";
+import type { RenderJobData } from "./portfolio-render";
 import { asciiFileName } from "./filename";
 import type { LambdaCapacity } from "./lambda-capacity";
 
-type JobData = VideoEditorSchemaProps;
+type JobData = RenderJobData;
 
 type JobState =
   | {
@@ -453,6 +453,7 @@ export const makeRenderQueue = ({
       expectedOutputPaths = [outputPath];
 
       await renderMedia({
+        frameRange: job.data.portfolioFrameRange,
         cancelSignal,
         serveUrl,
         composition,
@@ -546,6 +547,7 @@ export const makeRenderQueue = ({
     try {
       const { renderId, bucketName: siteBucketName } =
         await renderMediaOnLambda({
+          frameRange: data.portfolioFrameRange,
           region: overflowRegion,
           functionName: overflowFunctionName,
           serveUrl: overflowServeUrl,

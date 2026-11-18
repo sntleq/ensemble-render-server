@@ -11,6 +11,7 @@ import { bundle } from "@remotion/bundler";
 import path from "node:path";
 import { ensureBrowser } from "@remotion/renderer";
 import { videoEditorSchema } from "../remotion/schema";
+import { renderJobSchema } from "./portfolio-render";
 import { contentDispositionFor, sanitizeFilename } from "./filename";
 import {
   renderThumbnail,
@@ -69,7 +70,7 @@ function setupApp({ remotionBundleUrl }: { remotionBundleUrl: string }) {
   app.use(express.json({ limit: "50mb" }));
 
   app.post("/renders", async (req, res) => {
-    const parsed = videoEditorSchema.safeParse(req.body);
+    const parsed = renderJobSchema.safeParse(req.body);
 
     if (!parsed.success) {
       res
@@ -135,7 +136,7 @@ function setupApp({ remotionBundleUrl }: { remotionBundleUrl: string }) {
 
   // Registered before /renders/:jobId and protected by requireRenderIdentity.
   app.get("/renders/capabilities", (_req, res) => {
-    res.json({ ensembleWatermark: true, ensembleWatermarkPlanFeatures: true });
+    res.json({ ensembleWatermark: true, ensembleWatermarkPlanFeatures: true, portfolioFrameRange: true });
   });
 
   app.get("/renders/mine", (req, res) => {
