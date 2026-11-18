@@ -71,6 +71,7 @@ export function RenderVisibleItems({
       .filter((group) => group.length > 0);
 
     const eager: number[] = [];
+    const mediaRanges: FrameRange[] = [];
     const ranges: FrameRange[] = [];
     const bounds: Array<{ from: number; to: number }> = [];
     visibleGroupedItems.forEach((group, index) => {
@@ -89,17 +90,32 @@ export function RenderVisibleItems({
         ? from + items.reduce((sum, item) => sum + (item.display.to - item.display.from) * fps / 1000, 0) + transitionPadding
         : Math.max(...items.map(item => item.display.to * fps / 1000));
       bounds[index] = { from, to };
+      if (items.some(item => item.type === "video" || item.type === "audio" || isSceneItem(item.type))) {
+        // Query media even when a nested scene suppresses visuals: its audio
+        // still follows its sequences. Keep the entire transition chain intact.
+        // Round outward for fractional cuts; Sequence decides the exact frame.
+        mediaRanges.push({ index, from: Math.floor(from), to: Math.ceil(to) + 1 });
+        return;
+      }
       if (items.some(item => !["image", "text", "caption"].includes(item.type))) {
-        // In particular, never unmount eager editor video elements during seeking.
         eager.push(index);
         return;
       }
       ranges.push({ index, from, to });
     });
-    return { groups: visibleGroupedItems, eager, bounds, index: createFrameIndex(ranges) };
+    return {
+      groups: visibleGroupedItems, eager, bounds,
+      index: createFrameIndex(ranges),
+      mediaIndex: createFrameIndex(mediaRanges),
+    };
   }, [trackItemIds, trackItemsMap, transitionsMap, fps, nested]);
 
-  const activeGroups = [...plan.eager, ...(visualsActive ? groupsAtFrame(plan.index, frame ?? 0) : [])].sort((a, b) => a - b);
+  const currentFrame = frame ?? 0;
+  const activeGroups = [
+    ...plan.eager,
+    ...groupsAtFrame(plan.mediaIndex, currentFrame),
+    ...(visualsActive ? groupsAtFrame(plan.index, currentFrame) : []),
+  ].sort((a, b) => a - b);
 
   const renderItem = (id: string, isTransition: boolean, active: boolean) => {
     const item = trackItemsMap[id];

@@ -182,11 +182,7 @@ export const makeRenderQueue = ({
   const pendingJobIds: string[] = [];
   let activeLocalCount = 0;
 
-  // only free-tier video ever reaches this queue as type "video" - image
-  // (any tier) and image-sequence (any tier) can't be chunked/rendered via
-  // lambda at all, so they never overflow, only ever wait for a local slot
-  const canOverflow = (data: JobData) => data.type === "video";
-
+  // Free video uses its Lambda allocation first. Other formats in this queue require a local slot.
   const runNext = () => {
     for (let i = 0; i < pendingJobIds.length; i++) {
       const jobId = pendingJobIds[i];
@@ -198,7 +194,7 @@ export const makeRenderQueue = ({
       }
 
       const hasLocalSlot = activeLocalCount < MAX_LOCAL_JOBS;
-      const overflowReservation = !hasLocalSlot && canOverflow(job.data)
+      const overflowReservation = job.data.type === "video"
         ? lambdaCapacity.tryAcquire("freeOverflow", "free", "video")
         : null;
 
@@ -207,17 +203,7 @@ export const makeRenderQueue = ({
       pendingJobIds.splice(i, 1);
       i--;
 
-      if (hasLocalSlot) {
-        activeLocalCount++;
-        processLocalRender(jobId)
-          .catch((error) =>
-            console.error(`Unhandled error processing job ${jobId}:`, error),
-          )
-          .finally(() => {
-            activeLocalCount--;
-            runNext();
-          });
-      } else if (overflowReservation) {
+      if (overflowReservation) {
         processOverflowRender(jobId, overflowReservation.workers)
           .catch((error) =>
             console.error(
@@ -227,6 +213,16 @@ export const makeRenderQueue = ({
           )
           .finally(() => {
             overflowReservation.release();
+          });
+      } else {
+        activeLocalCount++;
+        processLocalRender(jobId)
+          .catch((error) =>
+            console.error(`Unhandled error processing job ${jobId}:`, error),
+          )
+          .finally(() => {
+            activeLocalCount--;
+            runNext();
           });
       }
     }

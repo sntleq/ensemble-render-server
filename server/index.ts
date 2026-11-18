@@ -61,16 +61,7 @@ function setupApp({ remotionBundleUrl }: { remotionBundleUrl: string }) {
           contentDispositionFor(projectName ?? jobId, ext),
         );
 
-        if (res.req.method === "GET") {
-          res.on("finish", () => {
-            queue.deleteJob(jobId).catch((error) => {
-              console.error(
-                `Failed to delete render output after download for job ${jobId}:`,
-                error,
-              );
-            });
-          });
-        }
+        // Keep the output available for retries until dismissal or the expiry sweep.
       },
     }),
   );
