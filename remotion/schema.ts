@@ -33,4 +33,11 @@ export const videoEditorSchema = z.object({
   currentTime: z.number().optional()
 });
 
+// Internal export inputs are added by the server after validating the request.
+export const compositionSchema = videoEditorSchema.extend({
+  preparedGifs: z.record(z.string(), z.object({
+    src: z.string(), endsMs: z.array(z.number())
+  })).optional()
+});
+
 export type VideoEditorSchemaProps = z.infer<typeof videoEditorSchema>;

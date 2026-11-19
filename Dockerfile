@@ -3,6 +3,7 @@ FROM node:lts-bookworm
 
 # Install dependencies required for chromium
 RUN apt-get update && apt-get install -y \
+  ffmpeg \
   libnss3 \
   libdbus-1-3 \
   libatk1.0-0 \

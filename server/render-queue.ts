@@ -1,3 +1,4 @@
+import { createGifPreparation } from "./prepare-gifs";
 import { renderDownloadUrl } from "./auth";
 import {
   makeCancelSignal,
@@ -300,10 +301,12 @@ export const makeRenderQueue = ({
       createdAt: job.createdAt,
     });
 
-    const inputProps = job.data;
+    const gifs = createGifPreparation({ directory: rendersDirPath, port });
     let expectedOutputPaths: string[] = [];
 
     try {
+      const inputProps = await gifs.prepare(job.data, () => cancelledJobIds.has(jobId));
+      if (await handleIfCancelled(jobId)) return;
       const composition = await selectComposition({
         serveUrl,
         id: compositionId,
@@ -505,6 +508,8 @@ export const makeRenderQueue = ({
         userId: job.userId,
         createdAt: job.createdAt,
       });
+    } finally {
+      await gifs.dispose();
     }
   };
 
@@ -544,7 +549,13 @@ export const makeRenderQueue = ({
     const bitrateArg =
       data.bitrate != null ? (`${data.bitrate}k` as const) : undefined;
 
+    const gifs = createGifPreparation({ s3, bucket: overflowBucketName });
     try {
+      const inputProps = await gifs.prepare(data, () => cancelledOverflowJobIds.has(jobId));
+      if (cancelledOverflowJobIds.delete(jobId)) {
+        jobs.delete(jobId);
+        return;
+      }
       const { renderId, bucketName: siteBucketName } =
         await renderMediaOnLambda({
           frameRange: data.portfolioFrameRange,
@@ -552,7 +563,7 @@ export const makeRenderQueue = ({
           functionName: overflowFunctionName,
           serveUrl: overflowServeUrl,
           composition: "VideoEditor",
-          inputProps: data,
+          inputProps,
           codec,
           scale,
           videoBitrate: codec !== "gif" ? bitrateArg : undefined,
@@ -640,6 +651,8 @@ export const makeRenderQueue = ({
         userId: job.userId,
         createdAt: job.createdAt,
       });
+    } finally {
+      await gifs.dispose();
     }
   };
 

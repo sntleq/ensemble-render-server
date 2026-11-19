@@ -1,3 +1,4 @@
+import { createGifPreparation } from "./prepare-gifs";
 import {
   renderMediaOnLambda,
   renderStillOnLambda,
@@ -253,37 +254,47 @@ export const makeLambdaRenderQueue = (lambdaCapacity: LambdaCapacity) => {
       cancel: () => cancelledJobIds.add(jobId),
     });
 
-    const { renderId, bucketName: siteBucketName } = await renderMediaOnLambda({
-      frameRange: data.portfolioFrameRange,
-      region,
-      functionName,
-      serveUrl,
-      composition: "VideoEditor",
-      inputProps: data,
-      codec,
-      scale: data.type === "video" ? scale : undefined,
-      videoBitrate:
-        data.type === "video" && codec !== "gif" ? bitrateArg : undefined,
-      audioBitrate: data.type === "audio" ? bitrateArg : undefined,
-      concurrency,
-      privacy: "no-acl",
-      outName: { bucketName, key: outKey },
-      downloadBehavior: {
-        type: "download",
-        fileName: `${asciiFileName(data.projectName)}.${data.format}`,
-      },
-    });
+    const gifs = createGifPreparation({ s3, bucket: bucketName });
+    try {
+      const inputProps = await gifs.prepare(data, () => cancelledJobIds.has(jobId));
+      if (cancelledJobIds.delete(jobId)) {
+        jobs.delete(jobId);
+        return;
+      }
+      const { renderId, bucketName: siteBucketName } = await renderMediaOnLambda({
+        frameRange: data.portfolioFrameRange,
+        region,
+        functionName,
+        serveUrl,
+        composition: "VideoEditor",
+        inputProps,
+        codec,
+        scale: data.type === "video" ? scale : undefined,
+        videoBitrate:
+          data.type === "video" && codec !== "gif" ? bitrateArg : undefined,
+        audioBitrate: data.type === "audio" ? bitrateArg : undefined,
+        concurrency,
+        privacy: "no-acl",
+        outName: { bucketName, key: outKey },
+        downloadBehavior: {
+          type: "download",
+          fileName: `${asciiFileName(data.projectName)}.${data.format}`,
+        },
+      });
 
-    await pollUntilDone(
-      jobId,
-      renderId,
-      siteBucketName,
-      outKey,
-      data,
-      userId,
-      createdAt,
-      tier,
-    );
+      await pollUntilDone(
+        jobId,
+        renderId,
+        siteBucketName,
+        outKey,
+        data,
+        userId,
+        createdAt,
+        tier,
+      );
+    } finally {
+      await gifs.dispose();
+    }
   };
 
   const startStillRender = async (

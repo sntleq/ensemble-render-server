@@ -1,5 +1,5 @@
 import { Composition } from "remotion";
-import { videoEditorSchema } from "./schema";
+import { compositionSchema } from "./schema";
 import VideoEditorComposition from "./player/composition";
 
 export const RemotionRoot: React.FC = () => {
@@ -8,7 +8,7 @@ export const RemotionRoot: React.FC = () => {
       <Composition
         id="VideoEditor"
         component={VideoEditorComposition}
-        schema={videoEditorSchema}
+        schema={compositionSchema}
         fps={30}
         width={1920}
         height={1080}

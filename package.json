@@ -14,6 +14,7 @@
   "repository": {},
   "license": "UNLICENSED",
   "dependencies": {
+    "@aws-sdk/s3-request-presigner": "3.986.0",
     "@designcombo/animations": "^5.5.8",
     "@designcombo/transitions": "5.5.8",
     "@designcombo/types": "5.5.8",
@@ -21,6 +22,7 @@
     "@remotion/bundler": "4.0.503",
     "@remotion/cli": "4.0.503",
     "@remotion/fonts": "4.0.503",
+    "@remotion/gif": "4.0.503",
     "@remotion/lambda": "4.0.503",
     "@remotion/media": "^4.0.503",
     "@remotion/paths": "^4.0.503",

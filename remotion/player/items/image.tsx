@@ -4,7 +4,40 @@ import { BoxAnim, ContentAnim, MaskAnim } from "@designcombo/animations";
 import { calculateContainerStyles, calculateMediaStyles } from "../styles";
 import { getAnimations } from "../../utils/get-animations";
 import { calculateFrames } from "../../utils/frames";
-import { Img } from "remotion";
+import { Gif } from "@remotion/gif";
+import { Img, OffthreadVideo, Sequence, useCurrentFrame } from "remotion";
+import { useContext } from "react";
+import { isGifSource, PreparedGifs, type PreparedGif } from "../../prepared-gif";
+
+const imageStyle = {
+  position: "absolute",
+  top: 0,
+  left: 0,
+  width: "100%",
+  height: "100%",
+  objectFit: "cover",
+  display: "block"
+} as const;
+
+function PreparedGifVideo({ gif, fps, rate, id }: { gif: PreparedGif; fps: number; rate: number; id: string }) {
+  const frame = useCurrentFrame();
+  const ends = gif.endsMs;
+  const elapsedMs = (frame * rate * 1000 / fps) % ends[ends.length - 1];
+  let low = 0;
+  let high = ends.length - 1;
+  while (low < high) {
+    const middle = Math.floor((low + high) / 2);
+    if (elapsedMs < ends[middle]) high = middle;
+    else low = middle + 1;
+  }
+  // Sample inside the chosen proxy frame, including at fractional sequence cuts.
+  const proxyFrame = (low + 0.25) * fps / 25;
+  return (
+    <Sequence from={frame - proxyFrame} layout="none">
+      <OffthreadVideo data-id={id} src={gif.src} muted transparent style={imageStyle} />
+    </Sequence>
+  );
+}
 
 export default function Image({
   item,
@@ -25,6 +58,7 @@ function ImageContent({
 }) {
   const { fps, frame } = options;
   const { details, animations } = item;
+  const preparedGif = useContext(PreparedGifs)[details.src];
   const { animationIn, animationOut, animationTimed } = getAnimations(
     animations!,
     item,
@@ -64,19 +98,21 @@ function ImageContent({
             id={`${item.id}-reveal-mask`}
             style={calculateMediaStyles(details, crop)}
           >
-            <Img
-              data-id={item.id}
-              src={details.src}
-              style={{
-                position: "absolute",
-                top: 0,
-                left: 0,
-                width: "100%",
-                height: "100%",
-                objectFit: "cover",
-                display: "block"
-              }}
-            />
+            {preparedGif ? (
+              <PreparedGifVideo id={item.id} gif={preparedGif} fps={fps} rate={item.playbackRate ?? 1} />
+            ) : isGifSource(details.src) ? (
+              <Gif
+                data-id={item.id}
+                src={details.src}
+                width={details.width}
+                height={details.height}
+                fit="cover"
+                playbackRate={item.playbackRate}
+                style={{ position: "absolute", top: 0, left: 0, display: "block" }}
+              />
+            ) : (
+              <Img data-id={item.id} src={details.src} style={imageStyle} />
+            )}
           </div>
         </MaskAnim>
       </ContentAnim>
