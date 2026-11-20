@@ -301,6 +301,14 @@ export const makeRenderQueue = ({
       createdAt: job.createdAt,
     });
 
+    // Remotion may deliver progress after a failure or cancellation.
+    const updateProgress = (progress: number) => {
+      const current = jobs.get(jobId);
+      if (current?.status !== "in-progress") return;
+      current.progress = progress;
+      console.info(`${jobId} render progress:`, progress);
+    };
+
     const gifs = createGifPreparation({ directory: rendersDirPath, port });
     let expectedOutputPaths: string[] = [];
 
@@ -385,18 +393,7 @@ export const makeRenderQueue = ({
           onStart: () => {
             console.info(`${jobId} frame render starting`);
           },
-          onFrameUpdate: (framesRendered) => {
-            const progress = framesRendered / totalFrames;
-            console.info(`${jobId} render progress:`, progress);
-            jobs.set(jobId, {
-              progress,
-              status: "in-progress",
-              cancel: cancelHandler,
-              data: job.data,
-              userId: job.userId,
-              createdAt: job.createdAt,
-            });
-          },
+          onFrameUpdate: (framesRendered) => updateProgress(framesRendered / totalFrames),
           onBrowserLog: (info) => {
             console.log(`[browser] ${info.type}: ${info.text}`);
           },
@@ -467,17 +464,7 @@ export const makeRenderQueue = ({
           job.data.type === "video" && !isGif ? bitrateArg : undefined,
         audioBitrate: job.data.type === "audio" ? bitrateArg : undefined,
         audioCodec: mediaFormat.codec === "h264-mkv" ? "mp3" : undefined,
-        onProgress: (progress) => {
-          console.info(`${jobId} render progress:`, progress.progress);
-          jobs.set(jobId, {
-            progress: progress.progress,
-            status: "in-progress",
-            cancel: cancelHandler,
-            data: job.data,
-            userId: job.userId,
-            createdAt: job.createdAt,
-          });
-        },
+        onProgress: ({ progress }) => updateProgress(progress),
         outputLocation: outputPath,
         onBrowserLog: (info) => {
           console.log(`[browser] ${info.type}: ${info.text}`);
@@ -662,6 +649,7 @@ export const makeRenderQueue = ({
 
     if (job.status === "queued" || job.status === "in-progress") {
       job.cancel();
+      jobs.delete(jobId);
       return true;
     }
 
